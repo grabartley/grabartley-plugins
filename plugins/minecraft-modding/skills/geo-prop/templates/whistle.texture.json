@@ -1,0 +1,55 @@
+{
+  "note": "Whistle, the worked example for the geo-prop skill. Renders to src/client/resources/assets/<modid>/textures/item/whistle.png",
+  "geo": "src/client/resources/assets/<modid>/geo/whistle.geo.json",
+  "seed": 20260816,
+  "materials": {
+    "brass": {
+      "light": "#F5D264",
+      "base": "#DFA92E",
+      "speck": "#C68C1E",
+      "edge": "#8C5A11",
+      "dither": 0.1
+    },
+    "cord": {
+      "light": "#E4DCC8",
+      "base": "#C6BBA2",
+      "speck": "#B3A78D",
+      "edge": "#7E7462",
+      "dither": 0.14
+    }
+  },
+  "cubes": {
+    "whistle[0]": "brass",
+    "whistle[1]": "brass",
+    "whistle[2]": "cord",
+    "whistle[3]": "cord",
+    "whistle[4]": "cord",
+    "whistle[5]": "cord"
+  },
+  "decals": [
+    {
+      "note": "airway slot across the -x tip of the mouthpiece",
+      "at": [8, 15],
+      "palette": { "X": "#2E220B" },
+      "rows": ["XXX"]
+    },
+    {
+      "note": "sound window cut clean across the top of the body, just behind the mouthpiece",
+      "at": [9, 0],
+      "palette": { "X": "#2E220B" },
+      "rows": ["XX", "XX", "XX", "XX"]
+    },
+    {
+      "note": "casting seam down the -z flank of the body",
+      "at": [5, 7],
+      "palette": { "s": "#B5821E" },
+      "rows": ["ssssss"]
+    },
+    {
+      "note": "casting seam down the +z flank of the body",
+      "at": [16, 7],
+      "palette": { "s": "#B5821E" },
+      "rows": ["ssssss"]
+    }
+  ]
+}

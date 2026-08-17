@@ -1,0 +1,63 @@
+{
+	"github": {
+		"owner": "your-github-login",
+		"devDir": "~/dev"
+	},
+	"defaults": {
+		"commands": {
+			"format": "./gradlew spotlessApply",
+			"test": "./gradlew test",
+			"build": "./gradlew clean build"
+		},
+		"javaVersion": 21
+	},
+	"repos": {
+		"your-github-login/your-repo": {
+			"worktreePrefix": "your-repo",
+			"copyRunDir": false,
+			"javaVersion": 21,
+			"commands": {
+				"format": "./gradlew spotlessApply",
+				"test": "./gradlew test",
+				"build": "./gradlew clean build"
+			},
+			"board": {
+				"number": 1,
+				"owner": "your-github-login",
+				"projectId": "PVT_xxxxxxxxxxxxxxxx",
+				"statusFieldId": "PVTSSF_xxxxxxxxxxxxxxxxxxxx",
+				"statusOptions": {
+					"Backlog": "xxxxxxxx",
+					"Ready": "xxxxxxxx",
+					"In progress": "xxxxxxxx",
+					"QA testing": "xxxxxxxx",
+					"Done": "xxxxxxxx"
+				}
+			},
+			"issueFlow": {
+				"epics": false,
+				"artLabels": false,
+				"milestonesAutomated": false,
+				"assignOnStart": false,
+				"ciGreenBeforeQa": true,
+				"prTemplate": false
+			},
+			"minecraft": {
+				"imagesBranch": "images",
+				"devWorld": "New World",
+				"gametestTemplates": []
+			},
+			"runelite": {
+				"runnerJarGlob": "build/libs/yourPlugin-*-all.jar",
+				"clientLog": "/tmp/runelite-client.log",
+				"mainSourceRelease": 11,
+				"hub": {
+					"upstream": "runelite/plugin-hub",
+					"fork": "your-github-login/plugin-hub",
+					"manifest": "plugins/your-plugin",
+					"releaseWorkflow": "release.yml"
+				}
+			}
+		}
+	}
+}

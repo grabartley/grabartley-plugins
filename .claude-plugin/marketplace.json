@@ -1,0 +1,25 @@
+{
+  "name": "grabartley-plugins",
+  "description": "Graham Bartley's reusable Claude Code skills: general dev workflow, Fabric Minecraft modding, and RuneLite plugin development, all driven by one shared config file.",
+  "owner": {
+    "name": "Graham Bartley",
+    "url": "https://github.com/grabartley"
+  },
+  "plugins": [
+    {
+      "name": "dev-workflow",
+      "source": "./plugins/dev-workflow",
+      "description": "General development workflow: git worktrees, PR conventions, GitHub issue creation with project board sync, end-to-end build flow, and local PR review."
+    },
+    {
+      "name": "minecraft-modding",
+      "source": "./plugins/minecraft-modding",
+      "description": "Fabric mod development: gametest authoring patterns, automated in-client QA with screenshot evidence, GeckoLib prop and item sprite art pipelines, audio conversion, and client/test runners."
+    },
+    {
+      "name": "runelite-dev",
+      "source": "./plugins/runelite-dev",
+      "description": "RuneLite plugin development: dev client with Jagex account login, Plugin Hub Java 11 constraints, testing, and end-to-end Plugin Hub release flow."
+    }
+  ]
+}

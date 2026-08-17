@@ -1,0 +1,28 @@
+# Dog Treat, the worked example for this skill. Renders to
+# src/main/resources/assets/<modid>/textures/item/<item>.png
+#
+# Baked biscuit ramp, warm rather than neutral brown, lit from the top left.
+# O = 5B3413   crust outline, shadow side (down and right edges)
+# k = 7A4A1E   crust outline, light side (up and left edges)
+# d = A8712C   shadow
+# m = C99145   base
+# l = E0B266   light
+# h = F4D79A   highlight, used sparingly on the top-left of each lobe pair
+# s = FBF1D8   sugar dusting, held in reserve; unused here because at this size
+#              a near-white speck reads as dirt rather than as sugar
+................
+................
+..kkk......kkk..
+.khllO....khllO.
+.kllmO....kllmO.
+.klmmO....klmmO.
+..kOmmkkkkmmOO..
+....khlllmmO....
+....kmmdmmdO....
+..kkmdOOOOddkO..
+.kllmO....kllmO.
+.klmmO....klmmO.
+.kmmdO....kmmdO.
+..kOO......kOO..
+................
+................

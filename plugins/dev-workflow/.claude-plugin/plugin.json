@@ -1,0 +1,6 @@
+{
+	"name": "dev-workflow",
+	"description": "General development workflow: git worktrees, PR conventions, GitHub issue creation with project board sync, end-to-end build flow, and local PR review.",
+	"version": "0.1.0",
+	"author": { "name": "Graham Bartley", "url": "https://github.com/grabartley" }
+}
