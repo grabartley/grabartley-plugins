@@ -62,7 +62,7 @@ General development workflow, usable in any repo.
 | `pr-local-review` | Locally review a PR and produce a paste-ready punch list |
 | `update-skill` | Update marketplace skills on a worktree, PR, squash merge, refresh local plugins |
 
-Commands: `/dev-workflow:build`, `/dev-workflow:pr`, `/dev-workflow:create-issue`, `/dev-workflow:worktree`, `/dev-workflow:pr-local-review`, `/dev-workflow:update-skill`, `/dev-workflow:setup-config`.
+Skills are invoked directly (for example `/build` or `/update-skill` in a session with the plugin enabled). The one command is `/dev-workflow:setup-config`, which has no skill counterpart: it bootstraps the config file.
 
 ### minecraft-modding
 
@@ -78,8 +78,6 @@ Fabric mod development on Minecraft 1.21.1 era tooling. Layers on top of dev-wor
 | `run-tests` | Unit tests, game tests, and the pre-push workflow |
 | `mp3-to-ogg` | Convert audio assets for resource packs |
 
-Commands: `/minecraft-modding:run-game-client`.
-
 ### runelite-dev
 
 RuneLite plugin development. Layers on top of dev-workflow.
@@ -90,8 +88,6 @@ RuneLite plugin development. Layers on top of dev-workflow.
 | `run-tests` | Unit tests plus the Plugin Hub Java 11 main-source constraint |
 | `publish-version` | Full release: dispatch release workflow, resolve the tag SHA, open the Plugin Hub update PR |
 
-Commands: `/runelite-dev:publish-version`.
-
 ## Contributing changes
 
-Use `/dev-workflow:update-skill`: it edits skills on a worktree, opens a PR, squash merges, and refreshes the local plugin installation. Keep skill text repo-agnostic; anything repo-specific belongs in the config file, documented in the `config` skill and `config.example.json`.
+Use the `update-skill` skill: it edits skills on a worktree, opens a PR, squash merges, and refreshes the local plugin installation. Keep skill text repo-agnostic; anything repo-specific belongs in the config file, documented in the `config` skill and `config.example.json`.

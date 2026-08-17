@@ -1,6 +1,9 @@
 {
-	"name": "runelite-dev",
-	"description": "RuneLite plugin development: dev client with Jagex account login, Plugin Hub Java 11 constraints, testing, and end-to-end Plugin Hub release flow.",
-	"version": "0.1.0",
-	"author": { "name": "Graham Bartley", "url": "https://github.com/grabartley" }
+  "name": "runelite-dev",
+  "description": "RuneLite plugin development: dev client with Jagex account login, Plugin Hub Java 11 constraints, testing, and end-to-end Plugin Hub release flow.",
+  "version": "0.1.1",
+  "author": {
+    "name": "Graham Bartley",
+    "url": "https://github.com/grabartley"
+  }
 }

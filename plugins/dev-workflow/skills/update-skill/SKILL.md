@@ -34,7 +34,8 @@ Read per the `config` skill:
 	  and document any new key in both the `config` skill's key reference and
 	  `config.example.json`.
 	- New skills need a `SKILL.md` in a new directory plus a mention in the repo `README.md` skill
-	  table; new commands go in `plugins/<plugin>/commands/`.
+	  table. Do not add a command that merely wraps a skill: skills are invocable directly, so
+	  commands exist only for flows with no skill counterpart (like `setup-config`).
 	- Bump the affected plugin's `version` in its `.claude-plugin/plugin.json`.
 5. **Validate.** `jq` every touched `.json` file to prove it parses, and re-read each changed
 	`SKILL.md` top to bottom for internal consistency (references to sections, templates, and
