@@ -94,9 +94,30 @@ All driver code is TEMPORARY and must never be committed. It exists only in the 
    `./gradlew runClient > /tmp/qa-run.log 2>&1` (background).
 4. Wait on the sentinels, never on time:
    `until grep -qE '\[QA\] (DONE|ERROR)|BUILD FAILED' /tmp/qa-run.log; do sleep 3; done`
-5. Read the `[QA]` log lines, then Read every captured PNG and actually LOOK at it: layout
-   alignment, text legibility, state highlights, scale behaviour. A green log with wrong pixels is
-   a failed QA.
+5. Read the `[QA]` log lines, then Read every captured PNG and judge it per **Reading The
+   Screenshots** below. A green log with wrong pixels is a failed QA.
+
+## Reading The Screenshots
+
+The trap is confirming the change instead of judging the picture. You know what you altered, so
+your eye goes straight to that one property, finds it applied, and calls the shot good, while a
+defect sitting in the same frame goes unread because you were not looking for it. Whoever opens
+the PR sees it in two seconds, and it costs another whole round.
+
+Judge every shot in two passes:
+
+1. **The change.** Did what you altered take effect, in the direction you intended? "It moved" is
+   not "it moved the right way": check the sign, the axis, the side, the amount.
+2. **The frame.** Now forget what you changed and read the picture as a player would. Anything
+   floating, sunk, clipping or gapped from what it should be touching. Anything tilted, mirrored
+   or facing the wrong way. Anything the wrong size against its neighbours. Labels, outlines and
+   effects in the wrong place. Contact points are the richest source of bugs: where two things
+   meet, they should meet.
+
+Write down what you actually see in each shot before ruling on it. "The totem is on the left now"
+restates your diff; "the totem is on the left, tipped away from the stone with a gap between them"
+reads the image, and only the second one catches anything. If a shot cannot settle a question
+because of its angle, distance or occlusion, that is a reason to re-shoot, not to assume.
 
 ## The Dev World Is Mutable State, And A Dead Player Poisons It
 
