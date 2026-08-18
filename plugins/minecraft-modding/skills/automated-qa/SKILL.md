@@ -157,6 +157,21 @@ acting watches the entity arrive on its own and calls that a pass. Give any enti
 test `setAiDisabled(true)`, and point the feature at it explicitly by id instead of letting it
 resolve.
 
+**A posed entity faces south no matter what yaw you gave it.** The renderer draws living entities
+off `bodyYaw`, which `refreshPositionAndAngles` never touches, and with AI disabled nothing ever
+updates it, so every screenshot quietly captures the entity's back while its rotation yaw claims it
+faces the camera. When posing an entity for a shot, set all three:
+
+```java
+entity.refreshPositionAndAngles(x, y, z, yaw, 0.0f);
+entity.setBodyYaw(yaw);
+entity.setHeadYaw(yaw);
+```
+
+If a mod's renderer applies per-variant yaw offsets to normalize differently-authored rigs, do NOT
+fold those into the pose: the offset exists precisely so that yaw means the same thing for every
+variant, so one plain yaw works uniformly.
+
 ## Publishing Evidence to the PR
 
 GitHub's `user-attachments` uploads are not available via `gh`, so the evidence lives on the
