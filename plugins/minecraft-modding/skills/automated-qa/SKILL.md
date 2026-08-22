@@ -398,8 +398,8 @@ dedicated orphan `<imagesBranch>` branch, stored by PR number. NEVER commit scre
 branch or main; binary evidence must not enter main's history.
 
 NEVER force-push or delete the `<imagesBranch>` branch: every PR description across the repo
-hot-links its evidence from this branch by raw URL, so rewriting its history breaks images on every
-past PR at once. Always add on top with normal commits; to replace a PR's evidence, overwrite the
+hot-links its evidence from this branch, so rewriting its history breaks images on every past PR at
+once. Always add on top with normal commits; to replace a PR's evidence, overwrite the
 files in its `pr-<number>/` directory in a new commit, which only ever affects that one PR.
 
 1. Downscale the keeper screenshots: `sips -Z 1000 run/screenshots/qa_*.png --out <staging-dir>/`
@@ -409,12 +409,33 @@ files in its `pr-<number>/` directory in a new commit, which only ever affects t
    into `pr-<number>/`, commit with `--no-verify` (any gradle-based pre-commit hook cannot run on
    the codeless orphan branch), push `origin <imagesBranch>`, then `git worktree remove` the temp
    path.
-3. Embed them in the PR body via raw URLs:
-   `https://raw.githubusercontent.com/<slug>/<imagesBranch>/pr-<number>/<name>.png`
-   placed next to the paragraph each illustrates, then `gh pr edit <num> --body-file ...`.
+3. Embed them in the PR body next to the paragraph each illustrates, then
+   `gh pr edit <num> --body-file ...`. **Which URL form depends on whether the repo is public**,
+   and these mods are private until they go open source for release:
+
+   | Repo | Embed as |
+   |---|---|
+   | Public | `https://raw.githubusercontent.com/<slug>/<imagesBranch>/pr-<number>/<name>.png` |
+   | Private | `https://github.com/<slug>/blob/<imagesBranch>/pr-<number>/<name>.png?raw=true` |
+
+   GitHub renders both hosts' URLs verbatim rather than through its Camo proxy, so the viewer's
+   own browser credentials decide whether the image loads. `raw.githubusercontent.com` never
+   receives a github.com session cookie, so on a private repo it 404s and every image in the body
+   is broken. The `blob/...?raw=true` form is on github.com, so the session authenticates and
+   GitHub redirects to the signed asset. That form keeps working unchanged once the repo goes
+   public, so prefer it whenever there is any doubt.
+
+   Verify rather than assume: `gh api -X POST /markdown -f mode=gfm -f context=<slug> -f
+   text='![x](<url>)'` shows the exact `src` GitHub will emit. Note that a token-authenticated
+   `curl` is NOT a valid test of either form, because the two hosts accept different credentials:
+   `raw.githubusercontent.com` accepts a bearer token but not a cookie, and the `blob` endpoint
+   accepts a cookie but not a token, so each will appear broken when probed the wrong way.
 4. If a later run replaces the screenshots, overwrite the same file names in `pr-<number>/` and
-   push again; the raw URLs track the images branch head, so the body only needs editing when the
+   push again; the URLs track the images branch head, so the body only needs editing when the
    prose changes.
+5. Use `<img src="..." width="420">` rather than markdown image syntax when placing several shots
+   side by side in a table, which is how a multi-client run is best read: one column per
+   participant, one row per phase.
 
 ## Checklist Before Handoff to Manual QA
 
