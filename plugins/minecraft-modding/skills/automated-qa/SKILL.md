@@ -1,25 +1,46 @@
 ---
 name: automated-qa
-description: Programmatically drive the game client with a temporary in-process QA driver, capture framebuffer screenshots of the feature under test, verify them, and attach the evidence to the PR. Use for any change with a visible or interactive surface BEFORE handing off to manual QA.
+description: Programmatically drive the game with a temporary in-process QA driver, capture framebuffer screenshots of the feature under test, verify them, and attach the evidence to the PR. Runs either singleplayer against an integrated server, or multiplayer against a local dedicated server with one or more connected clients. Use for any change with a visible, interactive, or multiplayer surface BEFORE handing off to manual QA.
 ---
 
 # Automated QA
 
-Drive the real game client programmatically, capture framebuffer screenshots of the feature under
-test, verify them, and attach the evidence to the PR. Use this after implementing any change with a
-visible or interactive surface (screens, HUD, rendering, in-world interactions) BEFORE handing off
-to manual QA. Manual QA then confirms feel and edge cases instead of discovering basics.
+Drive the real game programmatically, capture framebuffer screenshots of the feature under test,
+verify them, and attach the evidence to the PR. Use this after implementing any change with a
+visible or interactive surface (screens, HUD, rendering, in-world interactions), or with a
+multiplayer surface that only exists once real clients are connected, BEFORE handing off to manual
+QA. Manual QA then confirms feel and edge cases instead of discovering basics.
 
 Why in-process instead of OS automation: macOS input automation (System Events, cliclick) needs
 accessibility permissions the agent shell usually lacks, and OS-level clicks are brittle against
 window focus and Retina scaling. A temporary in-process driver has full deterministic control over
 the client, needs no OS permissions, and captures pixel-exact framebuffer screenshots.
 
+## Choosing The Mode
+
+Decide this before writing any driver, because it changes the harness, not just the scenario.
+
+| | Singleplayer | Multiplayer |
+|---|---|---|
+| What runs | one client with its integrated server | a local dedicated server plus N clients |
+| Reaching the server | `client.getServer().execute(...)` | a second driver in the main source set; `client.getServer()` is null |
+| Use it for | screens, HUD, rendering, item and block interaction, anything one player can demonstrate | S2C sync, join and rejoin behaviour, broadcasts with different audiences, per-player state, anything whose contract is "every connected player sees this" |
+
+Pick multiplayer when the behaviour under test **cannot be demonstrated by one player**, or when a
+gametest could not reach it. The common case for that second reason: a gametest's mock player never
+declares a mod's networking channels, so `canSend` is false and the real send path is never
+exercised. A real client on a real connection does declare them, which is exactly the gap this mode
+closes.
+
+Do not reach for multiplayer merely because the mod is multiplayer-first. One client is faster,
+quieter, and enough for most visible surfaces.
+
 ## Config
 
 Read per the dev-workflow `config` skill:
 - `repos.<slug>.minecraft.imagesBranch`, default `images`: orphan branch holding PR screenshot evidence
-- `repos.<slug>.minecraft.devWorld`, default `New World`: the dev save the driver loads
+- `repos.<slug>.minecraft.devWorld`, default `New World`: the dev save the driver loads in
+  singleplayer mode. Multiplayer mode generates its own world in the server's run directory.
 
 Resolve `<modid>` from `src/main/resources/fabric.mod.json` and the mod's base package (call it
 `<pkg>` below) from the client entrypoint in the same file.
@@ -29,23 +50,30 @@ Resolve `<modid>` from `src/main/resources/fabric.mod.json` and the mod's base p
 All driver code is TEMPORARY and must never be committed. It exists only in the worktree during QA.
 
 1. Create `src/client/java/<pkg-path>/<Feature>QaDriver.java` from
-   `templates/QaDriver.java` in this skill directory. It is a tick-driven state machine registered
-   on `ClientTickEvents.END_CLIENT_TICK`.
+   `templates/QaDriver.java` (singleplayer) or `templates/MultiplayerQaDriver.java`
+   (multiplayer) in this skill directory. It is a tick-driven state machine registered on
+   `ClientTickEvents.END_CLIENT_TICK`.
 2. Register it with one line at the end of the mod's client initializer `onInitializeClient()`:
    `<Feature>QaDriver.register();`
-3. After QA passes, revert both:
+3. Multiplayer only: also create `src/main/java/<pkg-path>/<Feature>ServerQaDriver.java` from
+   `templates/ServerQaDriver.java`, and register it with one line in the mod initializer's
+   `onInitialize()`. A dedicated server is a separate process, so this is the only way a scenario
+   can drive server state.
+4. After QA passes, revert every one of them:
    `git checkout -- src/client/java/<pkg-path>/<ClientInitializer>.java`
    `rm src/client/java/<pkg-path>/<Feature>QaDriver.java`
+   and, for multiplayer, the main-source initializer and driver too.
 
 ## Capabilities Toolbox
 
-- **World loading**: from the title screen call
+- **World loading (singleplayer)**: from the title screen call
   `client.createIntegratedServerLoader().start("<devWorld>", () -> {})` once
   `client.currentScreen instanceof TitleScreen` and ~60 ticks have passed (resources settled).
   Do NOT bother with loom `programArgs "--quickPlaySingleplayer", ...` — it is not picked up.
   The dev `run/saves/<devWorld>` world exists in every worktree when the `worktree` skill copies
   `run/` (set `copyRunDir` in config).
-- **Server-side setup**: `client.getServer().execute(() -> ...)` reaches the integrated server.
+- **Server-side setup (singleplayer)**: `client.getServer().execute(() -> ...)` reaches the
+  integrated server. In multiplayer this returns null; see **Reaching The Server** below.
   Spawn entities, set NBT/DataTracker state, tame to
   `server.getPlayerManager().getPlayerList().get(0)`, and trigger S2C packets exactly as
   production code would (e.g. calling the same networking send helpers used by gameplay). This
@@ -66,12 +94,160 @@ All driver code is TEMPORARY and must never be committed. It exists only in the 
 - **Lifecycle**: print `[QA]`-prefixed markers for every step, a final `[QA] DONE`, catch every
   exception into `[QA] ERROR`, and end with `client.scheduleStop()` so the run terminates itself.
 
+## Multiplayer Mode
+
+A local dedicated server plus one or more real clients, each in its own JVM. Everything in **The
+Temp Driver Pattern** still applies; the additions are below, and all of it is temporary.
+
+### Run Configurations
+
+One loom run config per participant. Add them to `build.gradle`, and revert afterwards unless the
+repo wants them permanently as dev infrastructure:
+
+```groovy
+runs {
+	qaServer {
+		server()
+		name "QA Server"
+		runDir "run/qa-server"
+		programArgs "--nogui"
+	}
+	qaClientAlice {
+		client()
+		name "QA Client Alice"
+		runDir "run/qa-alice"
+		programArgs "--username", "Alice"
+	}
+	qaClientBob {
+		client()
+		name "QA Client Bob"
+		runDir "run/qa-bob"
+		programArgs "--username", "Bob"
+	}
+}
+```
+
+This yields `runQaServer`, `runQaClientAlice`, `runQaClientBob`. **Every client needs its own
+`runDir`.** Two clients sharing one race on `options.txt` and overwrite each other's screenshots,
+and the evidence silently becomes one client's shots twice.
+
+### Server Preparation
+
+In the server's run directory, before the first launch:
+
+- `eula.txt` containing `eula=true`.
+- `server.properties` with, at minimum, `online-mode=false` so offline usernames can join. Prefer
+  `level-type=minecraft\:flat` (note the escaped colon) for deterministic framing, plus
+  `gamemode=creative`, `force-gamemode=true`, `difficulty=peaceful`, `spawn-monsters=false`,
+  `spawn-protection=0`. A flat world means every screenshot composes the same way on any seed.
+- **Seed whatever per-world state the feature reads**, into the world directory, before boot.
+
+That last point is the one that decides whether the run proves anything. **Seeded values must
+differ from what a fresh client holds on its own.** If the server is left on defaults and the
+client also starts on defaults, a join-time screenshot showing defaults is indistinguishable from a
+client that was never told anything, and the test is worthless while looking green. Choose seed
+values that differ in every field, and choose the later runtime change to differ from the seed
+in every field too.
+
+### Client Preparation
+
+Seed each client's `options.txt` from the developer's own `run/options.txt` when it exists, so
+their settings carry into the run, then force the QA-critical keys on top:
+
+```python
+# python3 seed.py run/options.txt run/qa-alice/options.txt run/qa-bob/options.txt
+import os, shutil, sys
+source, targets = sys.argv[1], sys.argv[2:]
+forced = {"pauseOnLostFocus": "false", "guiScale": "2", "skipMultiplayerWarning": "true",
+          "onboardAccessibility": "false", "tutorialStep": "none"}
+for target in targets:
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    if os.path.exists(source):
+        shutil.copyfile(source, target)
+    lines = open(target).read().splitlines() if os.path.exists(target) else []
+    seen = set()
+    out = []
+    for line in lines:
+        key = line.split(":", 1)[0]
+        out.append(f"{key}:{forced[key]}" if key in forced else line)
+        if key in forced:
+            seen.add(key)
+    out += [f"{k}:{v}" for k, v in forced.items() if k not in seen]
+    open(target, "w").write("\n".join(out) + "\n")
+```
+
+### Connecting
+
+Loom's quickPlay `programArgs` are not picked up, so connect from the driver once the title screen
+has settled:
+
+```java
+ConnectScreen.connect(
+    new TitleScreen(),
+    client,
+    ServerAddress.parse(address),
+    new ServerInfo("qa", address, ServerInfo.ServerType.OTHER),
+    false,
+    null);
+```
+
+`ConnectScreen` lives in `net.minecraft.client.gui.screen.multiplayer`. The client is in world once
+`client.world != null && client.player != null`. To leave, `client.world.disconnect()` then
+`client.disconnect()`; reconnect by calling `connect` again, which is how join, disconnect, and
+rejoin behaviour all get covered in one run.
+
+### Reaching The Server
+
+`client.getServer()` is null on a dedicated server, so a client driver cannot drive server state.
+Put a **second temporary driver in the main source set**, registered from the mod initializer, on
+`ServerTickEvents.END_SERVER_TICK`. Have it wait until the expected number of players is connected,
+then perform the change under test. The clients simply observe the effect.
+
+This needs no command tree, no console access, and no stdin plumbing, which matters because the
+command surface often does not exist yet at the point the behaviour is worth testing.
+
+Use the same driver to pose the players so each one is visible in the other's shot. Yaw runs
+`0` south (+Z), `90` west (-X), `180` north (-Z), `270` east (+X); get it backwards and the players
+stand back to back, which reads as "the other client never connected".
+
+```java
+players.get(0).networkHandler.requestTeleport(x - 3.0, y, z, 270.0f, 0.0f);  // faces +X
+players.get(1).networkHandler.requestTeleport(x + 3.0, y, z, 90.0f, 0.0f);   // faces -X
+```
+
+### Photographing State That Has No Pixels
+
+Sync, persistence, and per-player state have no visible surface, so a screenshot of the world
+proves nothing on its own. Register a `HudRenderCallback` in the client driver that draws **the
+state that client currently holds**, labelled with its username and the phase of the scenario. The
+screenshot then shows what that specific client believes, which is the actual claim under test.
+
+Draw the panel **fully opaque**. A translucent panel lets clouds and terrain through, and the
+result looks like a rendering defect in the evidence rather than a deliberate overlay.
+
+### Orchestration
+
+Server first, then clients, staggered so their connect attempts do not collide:
+
+1. Reset the world and re-seed the per-world state. **The server driver writes its change into the
+   world**, so a second run without a reset starts from the first run's end state and the join-time
+   phase silently tests the wrong values.
+2. Launch `runQaServer` in the background; wait for `Done (` in its log.
+3. Launch each client in the background, a few seconds apart, each with its own log file.
+4. Wait for `[QA] DONE` or `[QA] ERROR` in **every** client log, never on elapsed time.
+5. Stop the server.
+
 ## Environment Prep (once per worktree)
 
-- `run/options.txt`: set `pauseOnLostFocus:false` (MANDATORY — the client runs unfocused in the
+- `options.txt`: set `pauseOnLostFocus:false` (MANDATORY — the client runs unfocused in the
   background and singleplayer would otherwise sit on the pause screen, which also blocks any
   screen-open packet handler that checks `currentScreen == null`). Pin `guiScale` to a known value
-  so the first screenshots are deterministic.
+  so the first screenshots are deterministic. Preserve the developer's own `run/options.txt` by
+  copying it as the base and forcing only these keys on top, rather than writing a fresh file that
+  discards their settings. In multiplayer, do this per client run directory.
+- `pauseOnLostFocus:false` is necessary but **not sufficient**: a second client launching steals
+  focus and the first can still land on the pause screen. Call `client.setScreen(null)` in the
+  driver before every capture.
 - These are `run/` files, untracked; no cleanup needed beyond not committing them.
 - Keep recipe viewers (JEI/EMI) out of the run. They draw full-height sidebars and a search bar
   over every screen, which lands in the captured framebuffer and makes the evidence unreadable.
@@ -90,12 +266,31 @@ All driver code is TEMPORARY and must never be committed. It exists only in the 
    `ls build/classes/java/client/.../<Feature>QaDriver.class` exists and
    `javap -c -classpath build/classes/java/client <pkg>.<ClientInitializer> | grep -c QaDriver`
    returns non-zero. Do not launch until both check out.
-3. Launch in the background with output to a log file:
-   `./gradlew runClient > /tmp/qa-run.log 2>&1` (background).
+3. Launch in the background with output to a log file.
+   - Singleplayer: `./gradlew runClient > /tmp/qa-run.log 2>&1`.
+   - Multiplayer: follow **Orchestration** above, one log file per participant.
 4. Wait on the sentinels, never on time:
    `until grep -qE '\[QA\] (DONE|ERROR)|BUILD FAILED' /tmp/qa-run.log; do sleep 3; done`
+   In multiplayer, every client log must satisfy this before the run is over.
 5. Read the `[QA]` log lines, then Read every captured PNG and judge it per **Reading The
    Screenshots** below. A green log with wrong pixels is a failed QA.
+
+## Gotchas That Cost A Run Each
+
+- **`client.options` is null during `onInitializeClient()`.** GameOptions does not exist yet, so
+  any option override belongs on the first client tick, not in `register()`. Setting it in
+  `register()` throws and kills the entrypoint before the driver ever runs.
+- **The framebuffer holds the frame rendered before this tick.** Change an overlay label and
+  capture in the same tick and the screenshot shows the previous label. Route every capture
+  through a small "settle" step: set the state, clear the frame, wait a handful of ticks, then
+  save. Screenshots taken the naive way look correct until someone reads the caption.
+- **Toasts land in captures.** Advancement, tutorial, and unverified-chat toasts animate in over
+  several frames and appear in the top corner of the evidence. Clear the toast manager every tick
+  rather than only before a capture.
+- **A semi-transparent overlay is not evidence-safe.** Sky and terrain read through it and the
+  result looks like a rendering bug. Draw evidence panels fully opaque.
+- **Screenshot names must carry the participant.** With several clients writing shots, a name
+  without the username produces sets that cannot be told apart once collected.
 
 ## Reading The Screenshots
 
@@ -120,6 +315,9 @@ reads the image, and only the second one catches anything. If a shot cannot sett
 because of its angle, distance or occlusion, that is a reason to re-shoot, not to assume.
 
 ## The Dev World Is Mutable State, And A Dead Player Poisons It
+
+This section is about the **singleplayer** dev save. Multiplayer runs generate their own world in
+the server's run directory and should reset it per run, which sidesteps all of it.
 
 `run/saves/<devWorld>` persists between runs. A driver that kills the player writes that death into
 the save, and **every later run in that worktree inherits it**. This is the single most expensive
@@ -225,6 +423,12 @@ files in its `pr-<number>/` directory in a new commit, which only ever affects t
       checking `player.isRemoved()` before suspecting the feature
 - [ ] Every screenshot visually verified by reading the PNG, at multiple GUI scales for rendering
 - [ ] Server-side state assertions logged and correct (e.g. command/DataTracker values after a click)
+- [ ] Multiplayer only: the seeded server state differed from client defaults in every field, so
+      the join-time evidence distinguishes "synced" from "never contacted"
+- [ ] Multiplayer only: each client's shots show the other participant, proving more than one
+      client was really connected
+- [ ] Multiplayer only: run configs, server run directory, and per-client run directories reverted
+      or left untracked; nothing QA-only committed
 - [ ] Temp driver + initializer hook reverted; `git status` shows only intended files
 - [ ] Evidence pushed to the `<imagesBranch>` branch under `pr-<number>/` and embedded in the PR
       body; nothing image-related committed to the PR branch
