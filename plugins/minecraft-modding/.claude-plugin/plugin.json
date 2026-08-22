@@ -1,7 +1,7 @@
 {
   "name": "minecraft-modding",
   "description": "Fabric mod development: gametest authoring patterns, automated in-client QA with screenshot evidence, GeckoLib prop and item sprite art pipelines, audio conversion, and client/test runners.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": {
     "name": "Graham Bartley",
     "url": "https://github.com/grabartley"
