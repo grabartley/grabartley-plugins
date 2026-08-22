@@ -71,7 +71,7 @@ Fabric mod development on Minecraft 1.21.1 era tooling. Layers on top of dev-wor
 | Skill | What it does |
 |---|---|
 | `gametest` | Fabric GameTest authoring patterns: coordinates, batches, time pinning, mock players, flake diagnosis |
-| `automated-qa` | Drive the real client with a temp in-process driver, capture and verify screenshots, publish evidence to the PR |
+| `automated-qa` | Drive the real game with a temp in-process driver, singleplayer or a local server with several clients, capture and verify screenshots, publish evidence to the PR |
 | `geo-prop` | Author GeckoLib props as reviewable text with an offline render loop |
 | `item-sprite` | Author flat 16x16 sprites as palette-mapped text with size verification |
 | `run-game-client` | Launch the dev client for manual testing |
