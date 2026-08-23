@@ -73,6 +73,7 @@ Fabric mod development on Minecraft 1.21.1 era tooling. Layers on top of dev-wor
 | `gametest` | Fabric GameTest authoring patterns: coordinates, batches, time pinning, mock players, flake diagnosis |
 | `automated-qa` | Drive the real game with a temp in-process driver, singleplayer or a local server with several clients, capture and verify screenshots, publish evidence to the PR |
 | `geo-prop` | Author GeckoLib props as reviewable text with an offline render loop |
+| `multiblock` | Build a block larger than 1x1x1 and prove its model lands on the cells it owns |
 | `item-sprite` | Author flat 16x16 sprites as palette-mapped text with size verification |
 | `run-game-client` | Launch the dev client for manual testing |
 | `run-tests` | Unit tests, game tests, and the pre-push workflow |
