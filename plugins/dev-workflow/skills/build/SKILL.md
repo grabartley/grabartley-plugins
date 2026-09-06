@@ -53,12 +53,13 @@ Read per the `config` skill. `<slug>` is the current repo:
 
 Runs between opening the draft PR and marking it ready for review. Every step, in order.
 
-1. **Review.** Spawn a subagent on the latest Opus model whose only task is to invoke the `pr-local-review` skill against this PR number and return its punch list. Keep it in a subagent so the diff is read cold rather than by the agent that wrote it.
+1. **Review.** Spawn a subagent on the latest Opus model whose only task is to invoke the `pr-local-review` skill against this PR number and return its punch list. Keep it in a subagent so the diff is read cold rather than by the agent that wrote it. That review is read-only: it never changes the branch the build worktree sits on.
 2. **Triage.** Fix every blocker. Also take every suggestion that is cheap and clearly right; note which suggestions were skipped and why in the handoff report.
-3. **Fix on the same branch and worktree**, then re-run `commands.format`, `commands.test`, and `commands.build`, and update the PR body if the final state moved.
-4. **Re-run the gate** when the fixes changed design or behaviour. Stop once a review returns no blockers.
-5. **Then run automated QA**, for example `automated-qa` from the `minecraft-modding` plugin for a visible surface. Running it earlier means capturing evidence for code that is about to change.
-6. **Mark the PR ready**: `gh pr ready <number> --repo <slug>`.
+3. **Fix on the same branch and worktree**, then re-run `commands.format`, `commands.test`, and `commands.build`, and update the PR body if the final state moved. Run these against the worktree path explicitly, since a `cd` elsewhere earlier in the flow leaves the shell's working directory outside it.
+4. **Confirm every fix reached the PR.** After pushing, check that the PR's head commit matches the worktree's, so a commit made on the wrong branch cannot pass as shipped.
+5. **Re-run the gate** when the fixes changed design or behaviour. Stop once a review returns no blockers.
+6. **Then run automated QA**, for example `automated-qa` from the `minecraft-modding` plugin for a visible surface. Running it earlier means capturing evidence for code that is about to change.
+7. **Mark the PR ready**: `gh pr ready <number> --repo <slug>`.
 
 ## Board Status Policy
 

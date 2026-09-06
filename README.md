@@ -59,7 +59,7 @@ General development workflow, usable in any repo.
 | `pr` | Validation, commit, push, and PR creation with strict description conventions |
 | `create-issue` | GitHub issues with project board sync, optional epics and asset labels |
 | `build` | End-to-end feature flow: issue, worktree, implement, validate, draft PR, review gate, QA handoff |
-| `pr-local-review` | Locally review a PR against SOLID, DRY, KISS, correctness, docs, and dead code, and produce a paste-ready punch list |
+| `pr-local-review` | Read-only review of a PR from the local clone against SOLID, DRY, KISS, correctness, docs, and dead code, producing a paste-ready punch list |
 | `update-skill` | Update marketplace skills on a worktree, PR, squash merge, refresh local plugins |
 
 Skills are invoked directly (for example `/build` or `/update-skill` in a session with the plugin enabled). The one command is `/dev-workflow:setup-config`, which has no skill counterpart: it bootstraps the config file.
