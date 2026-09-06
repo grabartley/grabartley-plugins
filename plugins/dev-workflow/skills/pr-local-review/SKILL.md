@@ -1,6 +1,6 @@
 ---
 name: pr-local-review
-description: Locally check out a GitHub PR and review the diff, then output a short, paste-ready punch list of blockers and suggested fixes the user can hand directly to the agent that wrote the PR. Use when the user gives a GitHub PR URL or PR number and asks to review, audit, sanity-check, or look at the PR before merge. Do NOT use for general code reviews unrelated to a specific PR, and do NOT use just to fetch PR metadata.
+description: Locally check out a GitHub PR and review the diff against SOLID, DRY, KISS, correctness, docs, dead code, and antipatterns, then output a short, paste-ready punch list of blockers and suggested fixes. Use when the user gives a GitHub PR URL or PR number and asks to review, audit, sanity-check, or look at the PR before merge, and when the `build` skill runs its mandatory review gate on a draft PR. Do NOT use for general code reviews unrelated to a specific PR, and do NOT use just to fetch PR metadata.
 ---
 
 # pr-local-review
@@ -19,10 +19,36 @@ Trigger this skill when the user:
 - Asks for "blockers or suggested fixes" they can hand to an agent.
 - Wants a sanity check on a PR an agent opened.
 
+The `build` skill also invokes it automatically as its review gate, see "Invocation from build" below.
+
 Do NOT use this skill for:
 - General code review of the working tree.
 - Posting review comments to GitHub.
 - Just fetching PR metadata or summarizing the PR.
+
+## Review criteria
+
+Check the diff against every category below, not just the first thing you find.
+
+- **SOLID**, with single responsibility weighted heaviest: a class or method doing two jobs, a leaky abstraction, a type switch where polymorphism belongs, a fat interface forcing empty implementations, a hardcoded dependency that should be passed in.
+- **DRY**: logic duplicated inside the diff, or duplicating something the repo already has. Grep for an existing helper before accepting a new one.
+- **KISS**: indirection, configuration, or generality the change does not need yet.
+- **OOP practice**: encapsulation, mutable state escaping, inheritance where composition fits, static utility classes hiding stateful behaviour, constructors doing real work.
+- **Correctness**: bugs, NPEs, off-by-ones, unhandled edge cases, broken contracts, concurrency and lifecycle mistakes in the changed paths.
+- **Antipatterns**: god objects, primitive obsession, magic values, swallowed exceptions, boolean parameters that select behaviour, temporal coupling.
+- **Dead code**: unreachable branches, unused fields, methods and imports, scaffolding left behind by the change.
+- **Docs and comments**: README, in-repo docs, and doc comments the change invalidated, plus comments that only restate the code.
+- **Tests**: new behaviour nothing covers, and test classes not named for the single class under test.
+- **Anything else worth improving**, stated plainly rather than forced into a category above.
+
+## Invocation from build
+
+`build` runs this skill in a subagent on the latest Opus model against its own draft PR, before that PR is marked ready for review. In that mode:
+
+- The branch is already checked out in the build worktree, so skip the fetch and checkout in step 3 and diff that branch against its base.
+- Return the punch list as the subagent's result. Do not fix anything, `build` owns the fixes.
+- Review the diff cold, on its own merits. Be exhaustive and let `build` triage.
+- Drop the paste-ready framing: return the verdict line and the numbered punch list, no footer and no offer to apply the fixes.
 
 ## How to perform the review
 
@@ -91,12 +117,15 @@ Keep the response tight. Match the user's tone (their global instructions set th
 - Breaks an existing test or contract.
 - Crashes, NPEs, or obviously broken edge cases in the changed code paths.
 - Public API change that contradicts the PR description.
+- Docs the change makes wrong: README, in-repo docs, or doc comments that now contradict behaviour.
+- Behavioural code shipping with no test coverage.
+- Logic duplicating a helper that already exists in the repo.
 
 **Suggestion** (nice to have, not blocking):
 - Style, naming, comment quality, magic numbers.
 - Missing i18n if the rest of the project uses it.
 - Test naming or coverage gaps where the underlying behavior is correct.
 - Defensive copies, immutability hardening, dead code cleanup.
-- Refactors that would be cleaner but are not required.
+- Refactors that would be cleaner but are not required, including SOLID and KISS cleanups that leave behaviour unchanged.
 
 When unsure, default to "suggestion" and say "worth confirming" rather than escalating to blocker.

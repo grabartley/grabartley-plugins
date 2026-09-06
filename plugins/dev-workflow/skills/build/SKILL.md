@@ -20,14 +20,16 @@ Read per the `config` skill. `<slug>` is the current repo:
 3. Keep issue project status in sync during execution.
 4. Any new behavioral code change must include extensive unit tests in the same PR. Do not ship untested code. Docs-only or config-only changes (for example `README.md`, `.gitignore`, or workflow and skill files) are exempt.
 5. Unit tests MUST map to a single specific class. Test class name MUST match the class under test plus a `Test` suffix (e.g. `CoatRolls.java` -> `CoatRollsTest.java`), in the same package structure under `src/test/java`. A test that exercises `Foo` must be named `FooTest`, never `BarRelatedThingTest`.
-6. Check for domain plugins before coding. If the repo has the `minecraft-modding` plugin enabled and the change touches gametest code or entrypoints, invoke its `gametest` skill BEFORE writing code. If the change has a visible or interactive surface, its `automated-qa` skill is a hard requirement before manual QA handoff. If the repo has the `runelite-dev` plugin enabled, respect its Java 11 main-source constraint (see its `run-tests` skill).
-7. Run the `pr` skill as part of build after validation passes.
-8. Move the issue to `QA testing` only after the PR is opened and the CI gate in config is met. If CI fails, keep the issue in `In progress`, fix the failures on the same branch, and re-validate before transitioning.
-9. After PR creation and `QA testing` transition, always provide a detailed manual QA checklist to the developer. The checklist covers what automated validation could not; items already verified automatically are listed as pre-verified with a pointer to the evidence.
-10. If PR code changes after the PR is opened, check whether the PR description still matches the current branch state, and update it if needed so it reflects the final state only.
-11. Stop at `QA testing`, a human performs final verification and moves to `Done`.
-12. Every code change must also update any docs it invalidates. Audit `README.md`, in-repo docs, and the linked issue body before committing; ship doc edits in the same PR as the code change.
-13. If QA finds issues after handoff, re-enter the build flow for the same issue: move it back to `In progress` and continue on the existing branch and PR. Do not open a new issue for the same scope.
+6. Check for domain plugins before coding. If the repo has the `minecraft-modding` plugin enabled and the change touches gametest code or entrypoints, invoke its `gametest` skill BEFORE writing code. If the change has a visible or interactive surface, its `automated-qa` skill is a hard requirement before manual QA handoff, run at the point the review gate specifies. If the repo has the `runelite-dev` plugin enabled, respect its Java 11 main-source constraint (see its `run-tests` skill).
+7. Run the `pr` skill as part of build after validation passes, opening the PR as a draft (`gh pr create --draft ...`).
+8. The review gate below is mandatory. A draft PR never becomes ready for review while it has open blockers from that gate.
+9. Automated QA runs only after the review gate is clear, so evidence is captured once against final code.
+10. Move the issue to `QA testing` only after the PR is marked ready for review and the `ciGreenBeforeQa` condition is met. If CI fails, keep the issue in `In progress`, fix the failures on the same branch, and re-validate before transitioning.
+11. After the PR is ready and the `QA testing` transition lands, always provide a detailed manual QA checklist to the developer. The checklist covers what automated validation could not; items already verified automatically are listed as pre-verified with a pointer to the evidence.
+12. If PR code changes after the PR is opened, check whether the PR description still matches the current branch state, and update it if needed so it reflects the final state only.
+13. Stop at `QA testing`, a human performs final verification and moves to `Done`.
+14. Every code change must also update any docs it invalidates. Audit `README.md`, in-repo docs, and the linked issue body before committing; ship doc edits in the same PR as the code change.
+15. If QA finds issues after handoff, re-enter the build flow for the same issue: move it back to `In progress`, continue on the existing branch and PR, and pass back through the review gate before marking it ready again. Do not open a new issue for the same scope.
 
 ## Workflow
 
@@ -41,11 +43,22 @@ Read per the `config` skill. `<slug>` is the current repo:
 6. Move the issue to `In progress`.
 7. Implement the feature.
 8. Run relevant automated tests and a local validation pass for changed behavior.
-9. Run any applicable domain validation (for example `automated-qa` from the `minecraft-modding` plugin for visible surfaces, or a dev client run from the relevant domain plugin) before handoff.
-10. Invoke the `pr` skill for final checks, commit, push, and PR creation.
-11. Wait on CI per the `ciGreenBeforeQa` gate and report status.
-12. Move the issue to `QA testing` when the gate is met and the PR is ready for human verification.
+9. Invoke the `pr` skill for final checks, commit, push, and draft PR creation.
+10. Run the review gate below: review, fix, then automated QA, then mark the PR ready for review.
+11. Wait on CI per the `ciGreenBeforeQa` setting and report status.
+12. Move the issue to `QA testing` when CI is satisfied and the PR is ready for human verification.
 13. Provide a detailed manual QA checklist that the developer can run step by step.
+
+## Review Gate
+
+Runs between opening the draft PR and marking it ready for review. Every step, in order.
+
+1. **Review.** Spawn a subagent on the latest Opus model whose only task is to invoke the `pr-local-review` skill against this PR number and return its punch list. Keep it in a subagent so the diff is read cold rather than by the agent that wrote it.
+2. **Triage.** Fix every blocker. Also take every suggestion that is cheap and clearly right; note which suggestions were skipped and why in the handoff report.
+3. **Fix on the same branch and worktree**, then re-run `commands.format`, `commands.test`, and `commands.build`, and update the PR body if the final state moved.
+4. **Re-run the gate** when the fixes changed design or behaviour. Stop once a review returns no blockers.
+5. **Then run automated QA**, for example `automated-qa` from the `minecraft-modding` plugin for a visible surface. Running it earlier means capturing evidence for code that is about to change.
+6. **Mark the PR ready**: `gh pr ready <number> --repo <slug>`.
 
 ## Board Status Policy
 
@@ -58,13 +71,14 @@ Read per the `config` skill. `<slug>` is the current repo:
 
 - Required transitions for build flow:
 	- Start work: set to `In progress`
-	- After PR creation and QA handoff: set to `QA testing`
+	- After the PR is ready for review and QA handoff: set to `QA testing`
 	- Do not move to `Done` inside this skill
 
 ## Related Skills
 
 - `worktree`, required first step for isolated branch setup
 - `create-issue`, used when build work starts without an existing GitHub issue
-- `pr`, required for commit, push, and PR creation during build flow
+- `pr`, required for commit, push, and draft PR creation during build flow
+- `pr-local-review`, the mandatory review gate, run in an Opus subagent against the draft PR
 - `config`, for how repo settings are resolved
 - Domain plugins layer on top: `minecraft-modding` adds `gametest`, `automated-qa`, `run-game-client`; `runelite-dev` adds its client runner and release flow

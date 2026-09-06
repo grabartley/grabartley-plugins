@@ -29,6 +29,7 @@ Read per the `config` skill:
 8. Create PR with a body file to preserve markdown formatting and avoid shell interpolation issues:
 	- Write body markdown to a temp file (example: `.claude/tmp/pr-body.md`) and include real newlines.
 	- Create PR: `gh pr create --repo <slug> --base main --head <branch-name> --title "<title>" --body-file .claude/tmp/pr-body.md`
+	- Add `--draft` when the `build` skill is driving this flow, its review gate marks the PR ready later.
 	- If updating an existing PR body, use: `gh pr edit <pr-number> --repo <slug> --body-file .claude/tmp/pr-body.md`
 	- Title: `<type>: <description>` (same style as commit message)
 	- Body: lead with concise prose describing the FINAL STATE of the branch as it differs from `main`. Write in present tense as if the change has already landed. Group related behaviour into a few tight paragraphs. Reference specific files inline only when the path is essential context; otherwise leave file enumeration to the diff.
@@ -64,5 +65,6 @@ Read per the `config` skill:
 
 ## Build Skill Integration
 
+- When invoked from build, create the PR as a draft. Build's review gate runs `pr-local-review` in an Opus subagent, addresses the findings, runs automated QA, and only then marks the PR ready with `gh pr ready`.
 - If invoked after build work, confirm the linked issue is in `QA testing` before final handoff.
 - Do not move issue to `Done`, that is reserved for human QA completion.
