@@ -6,10 +6,10 @@ description: Update one or more skills in the grabartley-plugins marketplace rep
 # Update Skill
 
 End-to-end flow for changing marketplace skills: edit on an isolated worktree, ship via PR, squash
-merge, and pull the change into the local plugin installation so it takes effect immediately.
+merge, then update the installed plugin so the change takes effect without a restart.
 
 Unlike the `build` flow, this skill merges its own PR: the marketplace repo has no QA stage, and
-the change is not live locally until it lands on `main` and the marketplace refreshes.
+the change is not live locally until it lands on `main` and the installed plugin is updated to the new version.
 
 ## Config
 
@@ -49,15 +49,29 @@ Read per the `config` skill:
 	```
 8. **Clean up the worktree**: `git worktree remove ./.claude/worktrees/<prefix>-<branch>` and
 	`git -C <devDir>/grabartley-plugins pull` so the local checkout is on the merged `main`.
-9. **Refresh the local plugin installation** so the merged change is live:
+9. **Refresh the local plugin installation** so the merged change is live. Both commands are
+	required, one per plugin touched:
 	```bash
 	claude plugin marketplace update grabartley-plugins
+	claude plugin update <plugin>@grabartley-plugins
 	```
-	If the `claude plugin` CLI is unavailable in this environment, tell the user to run
-	`/plugin marketplace update grabartley-plugins` in their session instead, and note that
-	marketplaces with `autoUpdate` enabled pick the change up on their own.
-10. **Report**: what changed per skill, the merged PR URL, and whether the local refresh happened
-	or is on the user.
+	The first refreshes the marketplace catalog only. The second bumps the installed plugin, which
+	is what actually serves the skill files. Running only the first leaves the old version cached
+	and the merged change dead on this machine.
+10. **Verify the bump landed** before reporting success:
+	```bash
+	ls ~/.claude/plugins/cache/grabartley-plugins/<plugin>/
+	```
+	The new version must be listed. Cached skills live at
+	`~/.claude/plugins/cache/grabartley-plugins/<plugin>/<version>/skills/<skill>/SKILL.md`, so
+	grep one for the text just merged when a change needs proving.
+11. **Hand off the reload.** Ask the user to run `/reload-plugins`, which applies the update in
+	place with no restart. Until they run it, the session still serves the old cached version.
+	If the `claude plugin` CLI is unavailable in this environment, tell the user to update through
+	`/plugin` in their session instead, and note that marketplaces with `autoUpdate` enabled pick
+	the change up on their own.
+12. **Report**: what changed per skill, the merged PR URL, the version the plugin now sits at, and
+	that `/reload-plugins` is pending on the user.
 
 ## Conventions
 
