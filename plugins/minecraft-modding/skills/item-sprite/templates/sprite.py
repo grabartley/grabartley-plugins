@@ -2,7 +2,7 @@
 """Convert a palette-mapped text sprite into a PNG, plus previews for reviewing it.
 
 Usage:
-  python3 sprite.py build <source.txt> <out.png>       write the 16x16 PNG
+  python3 sprite.py build <source.txt> <out.png>       write the PNG
   python3 sprite.py zoom  <source.txt> <out.png> [n]   write a nearest-neighbour blow-up
   python3 sprite.py scales <source.txt> <out.png>      write a 1x/2x/3x/4x legibility strip
 
@@ -12,21 +12,25 @@ canvas are padded; anything longer, any unknown character, or the wrong row coun
 error rather than a silent crop, because a sprite that is quietly one pixel off looks
 almost right and wastes a review cycle.
 
+The canvas is 16x16 unless the source declares `# canvas = N`, which item sprites never
+need but entity and other non-item textures do.
+
 Keep the palette block in the source file itself so the sprite is self-describing and the
 whole thing reviews as a text diff.
 """
 import sys
 from PIL import Image
 
-CANVAS = 16
+DEFAULT_CANVAS = 16
 TRANSPARENT = ".", " "
 SLATE = (0x2B, 0x2B, 0x2E, 255)
 
 
 def parse(path):
-    """Return (palette, rows). Palette lines look like `# k = 7A4A1E` above the art."""
+    """Return (palette, rows, canvas). Palette lines look like `# k = 7A4A1E` above the art."""
     palette = {}
     rows = []
+    canvas = DEFAULT_CANVAS
     for raw in open(path, encoding="utf-8").read().splitlines():
         line = raw.rstrip("\n")
         if line.startswith("#"):
@@ -36,6 +40,9 @@ def parse(path):
                 key = key.strip()
                 # Everything after the hex is a note for the reader, not part of the colour.
                 value = value.strip().lstrip("#").split()[0]
+                if key == "canvas":
+                    canvas = int(value)
+                    continue
                 if len(key) != 1:
                     raise SystemExit(f"palette key {key!r} must be a single character")
                 if len(value) not in (6, 8):
@@ -51,22 +58,22 @@ def parse(path):
 
     while rows and not rows[-1].strip():
         rows.pop()
-    if len(rows) != CANVAS:
-        raise SystemExit(f"expected {CANVAS} art rows, found {len(rows)}")
+    if len(rows) != canvas:
+        raise SystemExit(f"expected {canvas} art rows, found {len(rows)}")
     for y, row in enumerate(rows):
-        if len(row) > CANVAS:
-            raise SystemExit(f"row {y} is {len(row)} chars, canvas is {CANVAS}")
+        if len(row) > canvas:
+            raise SystemExit(f"row {y} is {len(row)} chars, canvas is {canvas}")
         for x, char in enumerate(row):
             if char not in TRANSPARENT and char not in palette:
                 raise SystemExit(f"row {y} col {x}: {char!r} is not in the palette")
-    return palette, rows
+    return palette, rows, canvas
 
 
 def render(path):
-    palette, rows = parse(path)
-    image = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+    palette, rows, canvas = parse(path)
+    image = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
     for y, row in enumerate(rows):
-        for x, char in enumerate(row.ljust(CANVAS)):
+        for x, char in enumerate(row.ljust(canvas)):
             if char not in TRANSPARENT:
                 image.putpixel((x, y), palette[char])
     return image
@@ -75,13 +82,14 @@ def render(path):
 def scale_strip(image):
     """1x through 4x on a neutral slate, which is where legibility problems show up."""
     zooms = (1, 2, 3, 4)
+    canvas = image.width
     pad = 10
-    width = sum(CANVAS * z for z in zooms) + pad * (len(zooms) + 1)
-    height = CANVAS * max(zooms) + pad * 2
+    width = sum(canvas * z for z in zooms) + pad * (len(zooms) + 1)
+    height = canvas * max(zooms) + pad * 2
     strip = Image.new("RGBA", (width, height), SLATE)
     x = pad
     for zoom in zooms:
-        size = CANVAS * zoom
+        size = canvas * zoom
         strip.alpha_composite(image.resize((size, size), Image.NEAREST), (x, (height - size) // 2))
         x += size + pad
     return strip.resize((width * 4, height * 4), Image.NEAREST)
@@ -97,7 +105,7 @@ def main():
     elif mode == "zoom":
         zoom = int(sys.argv[4]) if len(sys.argv) > 4 else 20
         pad = 28
-        size = CANVAS * zoom
+        size = image.width * zoom
         sheet = Image.new("RGBA", (size + pad * 2, size + pad * 2), SLATE)
         sheet.alpha_composite(image.resize((size, size), Image.NEAREST), (pad, pad))
         sheet.save(out)

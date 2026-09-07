@@ -1,6 +1,6 @@
 ---
 name: item-sprite
-description: Author a flat 16x16 item sprite for a Fabric mod as a reviewable text source, verify it reads at hotbar size, and wire it into the item model. Use when an item needs a 2D texture rather than a GeckoLib model.
+description: Author a flat 16x16 item sprite for a Fabric mod as a reviewable text source, verify it reads at hotbar size, and wire it into the item model. Use when an item needs a 2D texture rather than a GeckoLib model, or when any other palette-mapped texture, such as an entity or block texture at a different canvas size, needs authoring as a reviewable text source.
 ---
 
 # Item Sprite
@@ -72,6 +72,26 @@ Blockbench stays the right tool for models and their UV textures.
    GUI scale 1 and 4. `item/generated` extrudes the sprite into a 3D held model, so a sprite that
    looks fine in a slot can still read badly in hand.
 
+## Other Canvas Sizes
+
+`sprite.py` builds a 16x16 canvas unless the source declares one, so a texture that is not an item
+sprite adds a directive alongside the palette block:
+
+```
+# canvas = 32
+```
+
+Everything else is unchanged: the same padding, the same strict row count, and the same text diff.
+Entity textures are the usual reason to reach for this, and they come with a constraint item sprites
+do not have. An entity texture is a UV unwrap, not a picture: the model samples fixed regions of the
+canvas, so the regions have to sit where the model expects them or the art lands on the wrong faces.
+Read the regions off the vanilla texture the model already uses rather than guessing them, then keep
+your art inside the same footprint.
+
+Preview an entity texture by cropping the region the player actually sees and scaling that, not by
+looking at the whole canvas. Most of the canvas is transparent, and a strip laid out on a sky
+background is the only honest check of whether the thing reads in motion.
+
 ## Palette
 
 Vanilla item sprites are not neutral. They use warm, saturated ramps with a dark outline that is a
@@ -118,7 +138,7 @@ Say so and pick a simpler read rather than shipping something mushy.
 ## Checklist Before Handing Off
 
 - [ ] The `.sprite.txt` source is committed, not just the PNG
-- [ ] The PNG is exactly 16x16 RGBA with a transparent background
+- [ ] The PNG is RGBA with a transparent background, at the canvas size the source declares
 - [ ] Lighting is top-left and consistent across every part of the shape
 - [ ] The outline uses two tones, and neither is pure black
 - [ ] The scales strip was viewed, and the sprite reads at 1x
