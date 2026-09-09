@@ -40,6 +40,24 @@ lines. Landing it on top of a behaviour change buries that change in the Files C
 costs the reviewer the ability to see either one. If the user has asked for it on an existing
 branch, do it, and say plainly that splitting it would keep both reviewable.
 
+### Two Scopes
+
+| Scope | File set | When |
+|---|---|---|
+| Repo-wide | every source file | adopting a no-comments house style, once |
+| Branch-scoped | only the files the current branch touched | enforcing that style on a change, every time |
+
+Branch-scoped is what the `build` skill's review gate runs, and it is the common case. It asks a
+narrower question, "did this change leave comments behind", so it produces a diff proportional to
+the change rather than to the repo:
+
+```bash
+git diff --name-only origin/main...HEAD -- '*.java' | xargs python3 scripts/strip_comments.py
+```
+
+Everything below applies to both. The survey in Step 1 is cheaper branch-scoped but not optional:
+a change can introduce a suppression comment as easily as a prose one.
+
 ## Step 1: Survey For Comments That Are Not Comments
 
 Some comments are load-bearing: the toolchain reads them, so deleting them changes behaviour. Find
@@ -219,5 +237,6 @@ extending the state machine, not just adding a table row.
 ## Related Skills
 
 - `config`, for the format, test, and build commands this skill runs unchanged
+- `build`, whose review gate runs this branch-scoped before a PR becomes ready for review
 - `worktree`, because a repo-wide rewrite belongs on its own branch
 - `pr`, for landing it as its own reviewable commit

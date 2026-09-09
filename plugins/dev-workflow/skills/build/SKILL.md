@@ -30,6 +30,7 @@ Read per the `config` skill. `<slug>` is the current repo:
 13. Stop at `QA testing`, a human performs final verification and moves to `Done`.
 14. Every code change must also update any docs it invalidates. Audit `README.md`, in-repo docs, and the linked issue body before committing; ship doc edits in the same PR as the code change.
 15. If QA finds issues after handoff, re-enter the build flow for the same issue: move it back to `In progress`, continue on the existing branch and PR, and pass back through the review gate before marking it ready again. Do not open a new issue for the same scope.
+16. No pull request becomes ready for review while the branch still carries comments it introduced. The review gate strips them, and the `strip-comments` skill's verification is what proves only comments went.
 
 ## Workflow
 
@@ -58,8 +59,9 @@ Runs between opening the draft PR and marking it ready for review. Every step, i
 3. **Fix on the same branch and worktree**, then re-run `commands.format`, `commands.test`, and `commands.build`, and update the PR body if the final state moved. Run these against the worktree path explicitly, since a `cd` elsewhere earlier in the flow leaves the shell's working directory outside it.
 4. **Confirm every fix reached the PR.** After pushing, check that the PR's head commit matches the worktree's, so a commit made on the wrong branch cannot pass as shipped.
 5. **Re-run the gate** when the fixes changed design or behaviour. Stop once a review returns no blockers.
-6. **Then run automated QA**, for example `automated-qa` from the `minecraft-modding` plugin for a visible surface. Running it earlier means capturing evidence for code that is about to change.
-7. **Mark the PR ready**: `gh pr ready <number> --repo <slug>`.
+6. **Strip any comments the change introduced.** Run the `strip-comments` skill over the files this branch touched, not the whole repo: the point here is that the implementation left no comments behind, and a repo-wide pass would bury the change under an unrelated rewrite. Follow that skill's verification step rather than trusting the strip, then re-run `commands.format`, `commands.test`, and `commands.build` and push. On a repo that already carries no comments this is a no-op and costs one command.
+7. **Then run automated QA**, for example `automated-qa` from the `minecraft-modding` plugin for a visible surface. Running it earlier means capturing evidence for code that is about to change, and stripping comments is a change.
+8. **Mark the PR ready**: `gh pr ready <number> --repo <slug>`.
 
 ## Board Status Policy
 
@@ -81,5 +83,6 @@ Runs between opening the draft PR and marking it ready for review. Every step, i
 - `create-issue`, used when build work starts without an existing GitHub issue
 - `pr`, required for commit, push, and draft PR creation during build flow
 - `pr-local-review`, the mandatory review gate, run in an Opus subagent against the draft PR
+- `strip-comments`, run in the review gate so no branch reaches review carrying comments it introduced
 - `config`, for how repo settings are resolved
 - Domain plugins layer on top: `minecraft-modding` adds `gametest`, `automated-qa`, `run-game-client`; `runelite-dev` adds its client runner and release flow
