@@ -117,18 +117,26 @@ def strip(source, lang):
     return "".join(out)
 
 
-def tidy(text):
-    """Drop the lines a comment vacated and never leave trailing whitespace behind."""
-    lines = [line.rstrip() for line in text.split("\n")]
+def tidy(text, source):
+    """Drop the lines a comment vacated, and touch nothing a comment did not.
+
+    A file with no comments must come back byte for byte, so the blank lines an author
+    wrote survive and only the ones a comment left behind are closed up. `strip` keeps
+    every newline it passes over, so the two texts agree line for line and a line that
+    differs from its original is exactly a line a comment came out of.
+    """
+    if text == source:
+        return source
+    stripped = text.split("\n")
+    original = source.split("\n")
     kept = []
-    for index, line in enumerate(lines):
+    for index, line in enumerate(stripped):
+        if line == original[index]:
+            kept.append(line)
+            continue
+        line = line.rstrip()
         if line == "":
-            previous = kept[-1] if kept else ""
-            following = lines[index + 1] if index + 1 < len(lines) else ""
-            if previous.strip() == "" and following.strip() == "":
-                continue
-            if previous.rstrip().endswith(("{", "(")) and following.strip() != "":
-                continue
+            continue
         kept.append(line)
     while kept and kept[-1] == "":
         kept.pop()
@@ -147,7 +155,7 @@ def main():
         with open(path, encoding="utf-8") as handle:
             original = handle.read()
         try:
-            updated = tidy(strip(original, lang))
+            updated = tidy(strip(original, lang), original)
         except ValueError as failure:
             print(f"SKIPPED {path}: {failure}", file=sys.stderr)
             continue

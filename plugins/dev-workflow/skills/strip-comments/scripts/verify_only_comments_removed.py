@@ -2,9 +2,11 @@
 
 A green build does not prove a stripper behaved: a line eaten inside a rarely-exercised
 branch still compiles and still passes tests. This reads every removed line and sorts it
-into one of three piles, so only the genuinely unexplained ones need a human.
+into one of four piles, so only the genuinely unexplained ones need a human.
 
-    accounted for : the line was a comment, or was blank
+    comment       : the line was a comment
+    blank         : the line was blank, counted separately because a stripper that eats
+                    an author's blank lines is churn a "comment" bucket would hide
     explained     : the line carried a trailing comment and its code survives in the diff
     unexplained   : everything else, which must be adjudicated before committing
 
@@ -71,12 +73,17 @@ def main():
     removed, added = diff_lines(args.pathspecs)
     added_blob = squashed("".join(added))
 
-    explained, unexplained = [], []
+    comments, blanks, explained, unexplained = 0, 0, [], []
     for line in removed:
+        if line.strip() == "":
+            blanks += 1
+            continue
         if is_comment_or_blank(line):
+            comments += 1
             continue
         code = code_of(line, lang)
         if code == "":
+            comments += 1
             continue
         if squashed(code) and squashed(code) in added_blob:
             explained.append((line, code))
@@ -85,6 +92,8 @@ def main():
 
     print(f"removed lines:  {len(removed)}")
     print(f"added lines:    {len(added)}")
+    print(f"comment lines:  {comments}")
+    print(f"blank lines:    {blanks}  (each one a comment vacated, or churn to explain)")
     print(f"explained:      {len(explained)}  (trailing comment, code survives verbatim)")
     print(f"unexplained:    {len(unexplained)}")
 
