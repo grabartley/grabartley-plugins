@@ -1,2 +1,5 @@
 .DS_Store
 .claude/tmp/
+
+__pycache__/
+*.pyc
