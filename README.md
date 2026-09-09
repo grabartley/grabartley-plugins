@@ -71,6 +71,7 @@ Fabric mod development on Minecraft 1.21.1 era tooling. Layers on top of dev-wor
 
 | Skill | What it does |
 |---|---|
+| `prd` | Turn a concept, a set of requirements, or an issue backlog into a product requirements document, refined with the user and shipped into the repo |
 | `gametest` | Fabric GameTest authoring patterns: coordinates, batches, time pinning, mock players, flake diagnosis |
 | `automated-qa` | Drive the real game with a temp in-process driver, singleplayer or a local server with several clients, capture and verify screenshots, publish evidence to the PR |
 | `geo-prop` | Author GeckoLib props as reviewable text with an offline render loop |
