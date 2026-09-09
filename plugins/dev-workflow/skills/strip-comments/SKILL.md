@@ -91,6 +91,43 @@ grep -rln '"""' <source-dirs>   # Java text blocks, Python docstrings
 `scripts/strip_comments.py` is the lexer. Do not modify it in place for one repo's quirk; if the
 language needs something it lacks, add a profile per **Adding A Language**.
 
+### Prove It Is A No-Op First
+
+Before the hazard fixture, prove the weaker and more easily forgotten property: **a file with no
+comments must come back byte for byte.** Anything else is the stripper reformatting code under the
+name of removing comments.
+
+```java
+public record Holder(boolean enabled) {
+
+  public static final boolean DEFAULT = true;
+
+  public int value(
+      int a) {
+
+    return a;
+  }
+}
+```
+
+```bash
+cp Holder.java Holder.expected && python3 scripts/strip_comments.py Holder.java
+diff Holder.expected Holder.java && echo "no-op confirmed"
+```
+
+The blank lines here are the whole point, and each one sits where a tidier is most tempted to close
+a gap: after a `{`, after an open paren, between members. A stripper that trims them is making a
+formatting change no one asked for, in files that had no comment to remove, and it will bury the
+real diff under hundreds of files of churn. The `git diff --stat` tells you immediately: the file
+count must match the number of files that actually contain comments, not the size of the tree.
+
+This one is easy to miss because every downstream check still passes. The code compiles, the tests
+pass, and Step 4 reports nothing unexplained, because a blank line genuinely is explainable: a
+comment strip is supposed to produce some. Step 4 counts blanks on their own line so the tally is
+at least visible, but it will not fail a run over them. This test is what actually catches it.
+
+### Then Prove It Against The Hazards
+
 Write a fixture that contains every hazard you found, run the stripper on it, and read the output
 before going near real files:
 
@@ -141,9 +178,11 @@ This is the step that makes the change trustworthy.
 python3 scripts/verify_only_comments_removed.py --language java <source-dirs>
 ```
 
-It reads `git diff -U0` and sorts every removed line into three piles:
+It reads `git diff -U0` and sorts every removed line into four piles:
 
-- **accounted for**, being a comment or a blank line, which is most of them
+- **comment**, being a comment line, which is most of them
+- **blank**, counted on its own line rather than folded in with comments, because a blank the
+  author wrote and a blank the stripper ate look identical once they are in the same bucket
 - **explained**, being a code line that carried a trailing comment whose code content it then
   finds surviving verbatim among the added lines
 - **unexplained**, being everything else
@@ -157,6 +196,10 @@ Do not wave a line through because the build is green. Open the file and look.
 
 A run with zero unexplained lines, plus the compile and test pass below, is the proof. On a real
 five thousand line strip this reduced the manual check to two imports.
+
+Read the blank count too, and expect it to be small next to the comment count. A blank tally that
+rivals the comment tally means blank lines are coming out of files that had nothing to say, which
+is the shape of the bug in **Prove It Is A No-Op First** rather than of a comment strip.
 
 ## Step 5: Compile And Run Everything
 
@@ -233,6 +276,9 @@ extending the state machine, not just adding a table row.
 - **`git diff` with default context hides the shape of the change.** Verify with `-U0`, which is
   what the verification script uses, so added and removed lines line up one to one.
 - **A file whose every line was a comment** becomes empty. Decide whether it should exist.
+- **A changed-file count far larger than the comment-bearing file count** is the tell that the
+  stripper is tidying rather than stripping. Count the files holding comments before you run it,
+  and compare that number to `git diff --stat` afterwards; they should agree.
 
 ## Related Skills
 
