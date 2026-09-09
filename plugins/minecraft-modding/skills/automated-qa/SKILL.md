@@ -269,14 +269,51 @@ Server first, then clients, staggered so their connect attempts do not collide:
 3. Launch in the background with output to a log file.
    - Singleplayer: `./gradlew runClient > /tmp/qa-run.log 2>&1`.
    - Multiplayer: follow **Orchestration** above, one log file per participant.
-4. Wait on the sentinels, never on time:
-   `until grep -qE '\[QA\] (DONE|ERROR)|BUILD FAILED' /tmp/qa-run.log; do sleep 3; done`
-   In multiplayer, every client log must satisfy this before the run is over.
+4. Wait on the sentinels, but **always bound the wait**. A driver whose scenario can never
+   complete produces no sentinel and no error, so an unbounded wait hangs until someone notices,
+   which is usually the user rather than you. Cap every run at roughly five minutes:
+   ```bash
+   deadline=$((SECONDS + 300))
+   until grep -qaE '\[QA\] (DONE|ERROR)|BUILD FAILED' /tmp/qa-run.log; do
+     [ $SECONDS -ge $deadline ] && { echo "[QA] TIMEOUT"; break; }
+     sleep 3
+   done
+   ```
+   In multiplayer, every client log must satisfy this before the run is over, and the deadline
+   covers the whole set rather than each client separately. Note that macOS has no `timeout`
+   binary unless coreutils is installed, so `timeout 300 ./gradlew ...` exits 127 and silently
+   skips the run; use the shell deadline above, or `gtimeout` if it exists.
+   On timeout, kill the launched processes, read the log, and fix the driver. Never relaunch an
+   identical run hoping it behaves differently.
 5. Read the `[QA]` log lines, then Read every captured PNG and judge it per **Reading The
    Screenshots** below. A green log with wrong pixels is a failed QA.
 
 ## Gotchas That Cost A Run Each
 
+- **An item only stays in use while `options.useKey` is held.** `MinecraftClient` calls
+  `interactionManager.stopUsingItem(player)` on every tick the use key is not pressed, so anything
+  that needs a bow drawn, a shield raised, food being eaten, or a crossbow charging must set
+  `client.options.useKey.setPressed(true)` and keep it pressed for the whole window. Two corollaries
+  cost a run each:
+  - Calling `client.interactionManager.interactItem(player, hand)` on its own is not enough. It
+    starts the use and the very next tick cancels it. Pressing the key alone usually works but
+    depends on window focus and cursor lock, so it fails intermittently when the client runs in the
+    background. Do both: press the key so nothing cancels, and call `interactItem` so the use starts
+    even unfocused.
+  - The same cancel defeats a **server-driven** use in multiplayer. `player.setCurrentHand(hand)` on
+    a `ServerPlayerEntity` sets the flag, then that player's own client sends `RELEASE_USE_ITEM`
+    because its use key is not held, and the server clears it. A player being posed mid-use must
+    drive the use from their own client driver; the server driver can only stage inventory and
+    position.
+
+  Assert the state rather than assuming it: log `player.isUsingItem()` and `getItemUseTimeLeft()` a
+  couple of ticks after starting. Nothing being used reads as `getItemUseTimeLeft() == 0`, which
+  turns any derived progress into an absurd value (`maxUseTime / 20`, so 3600 for a bow) rather than
+  into an error.
+- **Releasing a drawn item fires it.** `stopUsingItem` runs the real `onStoppedUsing`, so a
+  scenario that draws and releases a bow shoots a live arrow. With incendiary ammunition that sets
+  the world alight and the fire lands in every later screenshot. Prefer holding the draw for the
+  whole run, or expect the consequences in the frame.
 - **`client.options` is null during `onInitializeClient()`.** GameOptions does not exist yet, so
   any option override belongs on the first client tick, not in `register()`. Setting it in
   `register()` throws and kills the entrypoint before the driver ever runs.
@@ -439,7 +476,8 @@ files in its `pr-<number>/` directory in a new commit, which only ever affects t
 
 ## Checklist Before Handoff to Manual QA
 
-- [ ] Driver ran to `[QA] DONE` with zero `[QA] ERROR`
+- [ ] Driver ran to `[QA] DONE` with zero `[QA] ERROR`, inside the run deadline rather than being
+      cut off by it
 - [ ] Server-side interactions actually took effect; a `PASS` result with nothing consumed means
       checking `player.isRemoved()` before suspecting the feature
 - [ ] Every screenshot visually verified by reading the PNG, at multiple GUI scales for rendering
