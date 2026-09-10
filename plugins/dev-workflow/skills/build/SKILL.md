@@ -9,7 +9,7 @@ description: Build or implement a feature end to end, optionally from a GitHub i
 
 Read per the `config` skill. `<slug>` is the current repo:
 - `repos.<slug>.board.statusOptions` for the status names used below. No board config means skip board moves and say so.
-- `repos.<slug>.issueFlow.assignOnStart`: when true, assign the issue to the developer running the build before moving it to `In progress`. Detect the current GitHub user with `gh api user --jq .login`, do not guess.
+- The GitHub login of the developer running build, resolved with `gh api user --jq .login`. Never guess it and never reuse a login from an earlier session.
 - `repos.<slug>.issueFlow.ciGreenBeforeQa`: when true, move to `QA testing` only after CI has completed green; when false, after CI is running.
 - `commands.*` and `javaVersion` for validation runs.
 
@@ -17,20 +17,22 @@ Read per the `config` skill. `<slug>` is the current repo:
 
 1. Always tie build work to a GitHub issue.
 2. Run the `worktree` skill first before any issue moves, coding, or validation.
-3. Keep issue project status in sync during execution.
-4. Any new behavioral code change must include extensive unit tests in the same PR. Do not ship untested code. Docs-only or config-only changes (for example `README.md`, `.gitignore`, or workflow and skill files) are exempt.
-5. Unit tests MUST map to a single specific class. Test class name MUST match the class under test plus a `Test` suffix (e.g. `CoatRolls.java` -> `CoatRollsTest.java`), in the same package structure under `src/test/java`. A test that exercises `Foo` must be named `FooTest`, never `BarRelatedThingTest`.
-6. Check for domain plugins before coding. If the repo has the `minecraft-modding` plugin enabled and the change touches gametest code or entrypoints, invoke its `gametest` skill BEFORE writing code. If the change has a visible or interactive surface, its `automated-qa` skill is a hard requirement before manual QA handoff, run at the point the review gate specifies. If the repo has the `runelite-dev` plugin enabled, respect its Java 11 main-source constraint (see its `run-tests` skill).
-7. Run the `pr` skill as part of build after validation passes, opening the PR as a draft (`gh pr create --draft ...`).
-8. The review gate below is mandatory. A draft PR never becomes ready for review while it has open blockers from that gate.
-9. Automated QA runs only after the review gate is clear, so evidence is captured once against final code.
-10. Move the issue to `QA testing` only after the PR is marked ready for review and the `ciGreenBeforeQa` condition is met. If CI fails, keep the issue in `In progress`, fix the failures on the same branch, and re-validate before transitioning.
-11. After the PR is ready and the `QA testing` transition lands, always provide a detailed manual QA checklist to the developer. The checklist covers what automated validation could not; items already verified automatically are listed as pre-verified with a pointer to the evidence.
-12. If PR code changes after the PR is opened, check whether the PR description still matches the current branch state, and update it if needed so it reflects the final state only.
-13. Stop at `QA testing`, a human performs final verification and moves to `Done`.
-14. Every code change must also update any docs it invalidates. Audit `README.md`, in-repo docs, and the linked issue body before committing; ship doc edits in the same PR as the code change.
-15. If QA finds issues after handoff, re-enter the build flow for the same issue: move it back to `In progress`, continue on the existing branch and PR, and pass back through the review gate before marking it ready again. Do not open a new issue for the same scope.
-16. No pull request becomes ready for review while the branch still carries comments it introduced. The review gate strips them, and the `strip-comments` skill's verification is what proves only comments went.
+3. Assign the issue to the developer running build before any status move, any code, and any validation. Run `gh issue edit <number> --repo <slug> --add-assignee <login>` with the login from `gh api user --jq .login`. If the issue is already assigned to someone else, stop and report it rather than reassigning it.
+4. Verify the issue is still assigned to that developer immediately before every status change, with `gh issue view <number> --repo <slug> --json assignees`. If the assignment is gone, restore it and confirm it landed before making the status change. An issue never moves across the board while it is unassigned or assigned to someone else.
+5. Keep issue project status in sync during execution.
+6. Any new behavioral code change must include extensive unit tests in the same PR. Do not ship untested code. Docs-only or config-only changes (for example `README.md`, `.gitignore`, or workflow and skill files) are exempt.
+7. Unit tests MUST map to a single specific class. Test class name MUST match the class under test plus a `Test` suffix (e.g. `CoatRolls.java` -> `CoatRollsTest.java`), in the same package structure under `src/test/java`. A test that exercises `Foo` must be named `FooTest`, never `BarRelatedThingTest`.
+8. Check for domain plugins before coding. If the repo has the `minecraft-modding` plugin enabled and the change touches gametest code or entrypoints, invoke its `gametest` skill BEFORE writing code. If the change has a visible or interactive surface, its `automated-qa` skill is a hard requirement before manual QA handoff, run at the point the review gate specifies. If the repo has the `runelite-dev` plugin enabled, respect its Java 11 main-source constraint (see its `run-tests` skill).
+9. Run the `pr` skill as part of build after validation passes, opening the PR as a draft (`gh pr create --draft ...`).
+10. The review gate below is mandatory. A draft PR never becomes ready for review while it has open blockers from that gate.
+11. Automated QA runs only after the review gate is clear, so evidence is captured once against final code.
+12. Move the issue to `QA testing` only after the PR is marked ready for review and the `ciGreenBeforeQa` condition is met. If CI fails, keep the issue in `In progress`, fix the failures on the same branch, and re-validate before transitioning.
+13. After the PR is ready and the `QA testing` transition lands, always provide a detailed manual QA checklist to the developer. The checklist covers what automated validation could not; items already verified automatically are listed as pre-verified with a pointer to the evidence.
+14. If PR code changes after the PR is opened, check whether the PR description still matches the current branch state, and update it if needed so it reflects the final state only.
+15. Stop at `QA testing`, a human performs final verification and moves to `Done`.
+16. Every code change must also update any docs it invalidates. Audit `README.md`, in-repo docs, and the linked issue body before committing; ship doc edits in the same PR as the code change.
+17. If QA finds issues after handoff, re-enter the build flow for the same issue: move it back to `In progress`, continue on the existing branch and PR, and pass back through the review gate before marking it ready again. Do not open a new issue for the same scope.
+18. No pull request becomes ready for review while the branch still carries comments it introduced. The review gate strips them, and the `strip-comments` skill's verification is what proves only comments went.
 
 ## Workflow
 
@@ -40,14 +42,14 @@ Read per the `config` skill. `<slug>` is the current repo:
 	- `gh issue view <number> --repo <slug>`
 	- Extract acceptance criteria, constraints, and references.
 4. If no issue is provided, run the `create-issue` skill to create one before coding. Use the created issue as the tracking artifact for all subsequent status moves.
-5. With `assignOnStart` on, assign the issue to the developer who called build.
-6. Move the issue to `In progress`.
+5. Assign the issue to the developer who called build and confirm the assignment landed.
+6. Verify the assignment, then move the issue to `In progress`.
 7. Implement the feature.
 8. Run relevant automated tests and a local validation pass for changed behavior.
 9. Invoke the `pr` skill for final checks, commit, push, and draft PR creation.
 10. Run the review gate below: review, fix, then automated QA, then mark the PR ready for review.
 11. Wait on CI per the `ciGreenBeforeQa` setting and report status.
-12. Move the issue to `QA testing` when CI is satisfied and the PR is ready for human verification.
+12. Verify the assignment, then move the issue to `QA testing` when CI is satisfied and the PR is ready for human verification.
 13. Provide a detailed manual QA checklist that the developer can run step by step.
 
 ## Review Gate
@@ -73,9 +75,12 @@ Runs between opening the draft PR and marking it ready for review. Every step, i
 	- `Done`: human-only final move after QA signoff
 
 - Required transitions for build flow:
-	- Start work: set to `In progress`
+	- Start work: assign the issue to the developer running build, then set to `In progress`
 	- After the PR is ready for review and QA handoff: set to `QA testing`
+	- Re-entry after QA finds issues: set back to `In progress`
 	- Do not move to `Done` inside this skill
+
+- Every transition above is gated on the assignment check in Critical Rule 4. Read the issue's assignees, confirm the developer running build is among them, and only then write the status field.
 
 ## Related Skills
 

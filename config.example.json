@@ -38,7 +38,6 @@
 				"epics": false,
 				"artLabels": false,
 				"milestonesAutomated": false,
-				"assignOnStart": false,
 				"ciGreenBeforeQa": true,
 				"prTemplate": false
 			},
