@@ -61,7 +61,6 @@ FORMAT_CMD=$(jq -r --arg r "$REPO" '.repos[$r].commands.format // .defaults.comm
 | `repos.<slug>.issueFlow.epics` | create-issue | Attach issues to `[Epic]` parents as sub-issues |
 | `repos.<slug>.issueFlow.artLabels` | create-issue | Apply the `art` / `requires art` label system |
 | `repos.<slug>.issueFlow.milestonesAutomated` | create-issue | Release pipeline owns milestones, never set by hand |
-| `repos.<slug>.issueFlow.assignOnStart` | build | Assign the issue to the running developer before `In progress` |
 | `repos.<slug>.issueFlow.ciGreenBeforeQa` | build | Require CI green, not just running, before `QA testing` |
 | `repos.<slug>.issueFlow.prTemplate` | pr | Follow `.github/PULL_REQUEST_TEMPLATE.md` headings |
 | `repos.<slug>.minecraft.*` | minecraft-modding plugin | Images branch, dev world name, gametest templates |
