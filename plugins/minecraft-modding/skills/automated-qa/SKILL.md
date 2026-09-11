@@ -462,17 +462,49 @@ files in its `pr-<number>/` directory in a new commit, which only ever affects t
    GitHub redirects to the signed asset. That form keeps working unchanged once the repo goes
    public, so prefer it whenever there is any doubt.
 
-   Verify rather than assume: `gh api -X POST /markdown -f mode=gfm -f context=<slug> -f
-   text='![x](<url>)'` shows the exact `src` GitHub will emit. Note that a token-authenticated
-   `curl` is NOT a valid test of either form, because the two hosts accept different credentials:
-   `raw.githubusercontent.com` accepts a bearer token but not a cookie, and the `blob` endpoint
-   accepts a cookie but not a token, so each will appear broken when probed the wrong way.
-4. If a later run replaces the screenshots, overwrite the same file names in `pr-<number>/` and
+   **`?raw=true` is not optional and is the single most common way this breaks.** Strip it and
+   the URL is a GitHub *page* rather than image bytes, so the body renders a broken image on a
+   public repo and a private one alike. The suffix goes on every `src`, including inside `<img>`
+   tags and table cells.
+
+   Note that a token-authenticated `curl` is NOT a valid test of either form, because the two
+   hosts accept different credentials: `raw.githubusercontent.com` accepts a bearer token but not
+   a cookie, and the `blob` endpoint accepts a cookie but not a token, so each will appear broken
+   when probed the wrong way. Both also 404 unauthenticated on a private repo, so a red `curl`
+   proves nothing either way.
+4. **Verify the body that shipped, never a sample URL.** Checking one hand-written URL through
+   `gh api /markdown` proves only that the form is sound; it says nothing about what the generated
+   body actually contains, and a body built from a base string that omits the suffix passes that
+   check while every image is broken. Read the live PR back and assert on it:
+
+   ```bash
+   # every src must carry ?raw=true, so this must print 0
+   gh pr view <number> --repo <slug> --json body --jq .body \
+     | grep -oE 'src="[^"]+"' | grep -vc 'raw=true'
+
+   # every referenced file must exist on the images branch, so this must print nothing
+   gh pr view <number> --repo <slug> --json body --jq .body \
+     | grep -oE 'pr-<number>/[^"?]+\.png' | sort -u > /tmp/referenced.txt
+   git ls-tree -r origin/<imagesBranch> --name-only | grep '^pr-<number>/' | sort > /tmp/present.txt
+   comm -23 /tmp/referenced.txt /tmp/present.txt
+   ```
+
+   Those two commands are the only proof that matters: the first catches a dropped suffix, the
+   second catches a typo or a file that never pushed. Run them after every `gh pr edit`, including
+   edits that only touch prose.
+
+   The embed syntax is never the culprit, so do not go looking there. `![](url)`, a bare
+   `<img src>`, and an `<img>` inside a table cell all emit an identical `src` through GitHub's
+   renderer; confirm with `gh api -X POST /markdown -f mode=gfm -f context=<slug> -f text='...'`
+   if in doubt.
+5. If a later run replaces the screenshots, overwrite the same file names in `pr-<number>/` and
    push again; the URLs track the images branch head, so the body only needs editing when the
    prose changes.
-5. Use `<img src="..." width="420">` rather than markdown image syntax when placing several shots
-   side by side in a table, which is how a multi-client run is best read: one column per
-   participant, one row per phase.
+6. Use `<img src="...?raw=true" width="420">` rather than markdown image syntax when placing
+   several shots side by side in a table, which is how a multi-client run is best read: one column
+   per participant, one row per phase. Generating those tags from a loop or a format string is
+   exactly where the `?raw=true` suffix gets dropped, so put it in the template itself rather than
+   appending it per call site.
 
 ## Checklist Before Handoff to Manual QA
 
@@ -491,6 +523,8 @@ files in its `pr-<number>/` directory in a new commit, which only ever affects t
 - [ ] Temp driver + initializer hook reverted; `git status` shows only intended files
 - [ ] Evidence pushed to the `<imagesBranch>` branch under `pr-<number>/` and embedded in the PR
       body; nothing image-related committed to the PR branch
+- [ ] The live PR body verified, not a sample URL: every `src` carries `?raw=true` and every
+      referenced file exists on the images branch
 
 ## Related Skills
 
