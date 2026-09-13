@@ -1,6 +1,6 @@
 ---
 name: item-sprite
-description: Author a flat 16x16 item sprite for a Fabric mod as a reviewable text source, verify it reads at hotbar size, and wire it into the item model. Use when an item needs a 2D texture rather than a GeckoLib model, or when any other palette-mapped texture, such as an entity or block texture at a different canvas size, needs authoring as a reviewable text source.
+description: Author a flat 16x16 item sprite for a Fabric mod by writing its pixels as palette-mapped text in scratch, verify it reads at hotbar size, and ship only the rendered PNG. Use when an item needs a 2D texture rather than a GeckoLib model, or when any other palette-mapped texture, such as an entity or block texture at a different canvas size, needs authoring pixel by pixel.
 ---
 
 # Item Sprite
@@ -15,19 +15,30 @@ Resolve `<modid>` from `src/main/resources/fabric.mod.json`.
 ## Do Not Use Blockbench For This
 
 Blockbench is a 3D model editor. It can paint a texture, but driving a 16x16 pixel grid through
-its UI is slower and less precise than writing the pixels, and the only artifact it leaves behind
-is a binary PNG that reviews as "1 file changed" with no diff.
+its UI is slower and less precise than writing the pixels. At this size every pixel is a deliberate
+decision, and a text grid lets you place each one exactly and reason about the silhouette as a
+whole.
 
 Author the sprite as a **palette-mapped text file** instead and convert it with
-`templates/sprite.py`. One character per pixel, a palette block at the top, and the whole sprite
-reviews as a text diff where a reviewer can see exactly which pixels moved.
+`templates/sprite.py`. One character per pixel, a palette block at the top, so the pixels can be
+reasoned about and edited as text while the sprite is being made.
+
+That text file is a **scratch authoring artifact, not a repo asset**. Write it somewhere temporary
+and never commit it. See **The Source Text Is Scratch** below for why this is a hard rule.
 
 Blockbench stays the right tool for models and their UV textures.
 
 ## Workflow
 
-1. **Copy the template source.** `templates/treat.sprite.txt` is the worked example and renders
-   to a shipped sprite. Start from its palette block.
+1. **Copy the template source into scratch.** `templates/treat.sprite.txt` is the worked example
+   and renders to a shipped sprite. Start from its palette block, and put your copy in a scratch
+   directory outside the repo so it cannot be staged by accident. `$SCRATCH` below is the session's
+   scratch directory, or any temp path outside the working tree:
+	```bash
+	SCRATCH=<session scratch dir, or mktemp -d>
+	cp ${CLAUDE_PLUGIN_ROOT}/skills/item-sprite/templates/treat.sprite.txt "$SCRATCH/my.sprite.txt"
+	```
+   Every `my.sprite.txt` below means that scratch path, never a path inside the repo.
 
 2. **Design the silhouette first, in text, with no shading.** Use a single fill character and get
    the shape reading before spending any effort on tone. If the silhouette does not read at 16x16,
@@ -35,7 +46,7 @@ Blockbench stays the right tool for models and their UV textures.
 
 3. **Render and look at it.**
 	```bash
-	python3 ${CLAUDE_PLUGIN_ROOT}/skills/item-sprite/templates/sprite.py zoom my.sprite.txt /tmp/zoom.png 20
+	python3 ${CLAUDE_PLUGIN_ROOT}/skills/item-sprite/templates/sprite.py zoom "$SCRATCH/my.sprite.txt" /tmp/zoom.png 20
 	```
 	Then actually open the PNG. Reading the text source is not verification: the eye cannot
 	integrate a character grid into a shape, and every silhouette that failed in practice looked
@@ -46,14 +57,14 @@ Blockbench stays the right tool for models and their UV textures.
 
 5. **Check it at real size.**
 	```bash
-	python3 ${CLAUDE_PLUGIN_ROOT}/skills/item-sprite/templates/sprite.py scales my.sprite.txt /tmp/scales.png
+	python3 ${CLAUDE_PLUGIN_ROOT}/skills/item-sprite/templates/sprite.py scales "$SCRATCH/my.sprite.txt" /tmp/scales.png
 	```
 	This lays the sprite out at 1x, 2x, 3x and 4x on a neutral slate. A sprite that only reads at
 	4x has failed: players see it at hotbar size.
 
 6. **Build the real PNG into the repo.**
 	```bash
-	python3 ${CLAUDE_PLUGIN_ROOT}/skills/item-sprite/templates/sprite.py build my.sprite.txt \
+	python3 ${CLAUDE_PLUGIN_ROOT}/skills/item-sprite/templates/sprite.py build "$SCRATCH/my.sprite.txt" \
 		src/main/resources/assets/<modid>/textures/item/<item>.png
 	```
 
@@ -65,12 +76,45 @@ Blockbench stays the right tool for models and their UV textures.
 	}
 	```
 
-8. **Commit the `.sprite.txt` source alongside the texture**, so the next person editing the
-   sprite edits text rather than reverse-engineering a PNG.
+8. **Commit the PNG only.** Leave the `.sprite.txt` in your scratch directory and let it be thrown
+   away. The committed PNG is the sprite.
 
 9. **Verify in the client** with `automated-qa`: hotbar, inventory, tooltip, and the held model at
    GUI scale 1 and 4. `item/generated` extrudes the sprite into a 3D held model, so a sprite that
    looks fine in a slot can still read badly in hand.
+
+## The Source Text Is Scratch
+
+Committing the `.sprite.txt` alongside the PNG looks like an obvious win: pixel art then reviews as
+a readable diff instead of "Binary file changed". It is a trap, and it has already cost one repo a
+28-file directory that had to be deleted.
+
+The text file is a **second source of truth that no build step validates**. Nothing in gradle, in
+CI, or in the game reads it. The PNG is what ships, what the game samples, and what a texture pack
+overrides. So the moment anyone touches a PNG directly, with an image editor, a batch resize, a
+palette tweak, the text file beside it becomes a confident and unverifiable claim about a file it
+no longer describes. There is no failing build and no signal of any kind. A reviewer reading the
+text diff is then reading fiction.
+
+Worse, the drift is invisible in exactly the case the sources were meant to help with. A reviewer
+who trusts the diff is trusting the artifact least likely to match what players see.
+
+Three rules follow:
+
+- **Write the source outside the repo.** A scratch or temp directory, never a tracked path. Do not
+  create an `art/`, `sprites/`, or `sources/` tree to hold them.
+- **Never stage one.** If `git status` shows a `.sprite.txt`, that is a mistake to undo, not a file
+  to describe in the commit message.
+- **Do not document them as an authoring workflow.** A README or architecture doc that tells the
+  next person to edit the text and regenerate the PNG is promising a guarantee the repo cannot keep.
+
+The legible-diff benefit is real but it belongs to the authoring session, not to the repo's history.
+Take it while you are making the sprite, then let the file go.
+
+If a project genuinely wants reviewable pixel art in its history, the only honest way is a build
+task that regenerates every PNG from its source and fails on any mismatch. Absent that check, the
+sources are worse than nothing. Propose the check explicitly rather than committing sources and
+hoping.
 
 ## Other Canvas Sizes
 
@@ -137,7 +181,7 @@ Say so and pick a simpler read rather than shipping something mushy.
 
 ## Checklist Before Handing Off
 
-- [ ] The `.sprite.txt` source is committed, not just the PNG
+- [ ] No `.sprite.txt` is staged, and no `art/` or sprite-source directory was created
 - [ ] The PNG is RGBA with a transparent background, at the canvas size the source declares
 - [ ] Lighting is top-left and consistent across every part of the shape
 - [ ] The outline uses two tones, and neither is pure black
