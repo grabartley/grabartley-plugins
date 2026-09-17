@@ -195,7 +195,7 @@ renders do not, and it is the tool whoever picks the prop up next will use.
    to face the other way in the viewport than in `geoprop.py` renders or in game, and do not
    "fix" a mirror that only exists in the editor.
 4. Because of that mirror, **Blockbench is not the authority on which end a top-face detail lands**.
-   The game is. Use `facecheck` and an `automated-qa` screenshot to settle it.
+   The game is. Use `facecheck` and an `scripted-qa` screenshot to settle it.
 
 Editing in Blockbench and saving is fine, but re-run `geoprop.py texture` afterwards if the cube
 list moved, since every face rect shifts with it.
@@ -220,10 +220,10 @@ list moved, since every face rect shifts with it.
 - [ ] Rotated cubes still touch what they attach to
 - [ ] The texture is one texel per model unit unless there is a reason it is not
 - [ ] The `.texture.json` spec is committed, not just the PNG
-- [ ] `automated-qa` captured the prop in the hotbar, in the inventory, in hand and on the ground
+- [ ] `scripted-qa` captured the prop in the hotbar, in the inventory, in hand and on the ground
 
 ## Related Skills
 
 - `item-sprite`, the flat 16x16 route, for items that are deliberately 2D
-- `automated-qa`, driving the client to verify the prop and attaching the evidence to the PR
+- `scripted-qa`, driving the client to verify the prop and attaching the evidence to the PR
 - dev-workflow `build` and `pr`, shipping the change

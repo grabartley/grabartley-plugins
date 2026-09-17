@@ -190,7 +190,7 @@ four facings: a fault that only appears on three of them is the signature above.
 
 Diagnose with logs before theorising. A single line printing the facing the renderer resolved, and
 the block state of each cell, settles in one run what an afternoon of matrix algebra will not.
-Follow `automated-qa` for driving the client and publishing the evidence.
+Follow `scripted-qa` for driving the client and publishing the evidence.
 
 ## Checklist
 
@@ -207,5 +207,5 @@ Follow `automated-qa` for driving the client and publishing the evidence.
 ## Related Skills
 
 - `geo-prop`, authoring the model and its texture as reviewable text
-- `automated-qa`, driving the client for the plan-view evidence and attaching it to the PR
+- `scripted-qa`, driving the client for the plan-view evidence and attaching it to the PR
 - `gametest`, covering placement, breaking, and interaction across the cells

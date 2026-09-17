@@ -217,4 +217,4 @@ The review gate matters more here than for code, because a documentation change 
 - dev-workflow `build`, which ships the document into a repo through the full issue, worktree, and review flow
 - dev-workflow `create-issue`, for the gaps verification finds
 - dev-workflow `config`, for confirming the repo is configured
-- `gametest` and `automated-qa`, which prove the requirements this document states
+- `gametest` and `scripted-qa`, which prove the requirements this document states
