@@ -22,7 +22,7 @@ Read per the `config` skill. `<slug>` is the current repo:
 5. Keep issue project status in sync during execution.
 6. Any new behavioral code change must include extensive unit tests in the same PR. Do not ship untested code. Docs-only or config-only changes (for example `README.md`, `.gitignore`, or workflow and skill files) are exempt.
 7. Unit tests MUST map to a single specific class. Test class name MUST match the class under test plus a `Test` suffix (e.g. `CoatRolls.java` -> `CoatRollsTest.java`), in the same package structure under `src/test/java`. A test that exercises `Foo` must be named `FooTest`, never `BarRelatedThingTest`.
-8. Check for domain plugins before coding. If the repo has the `minecraft-modding` plugin enabled and the change touches gametest code or entrypoints, invoke its `gametest` skill BEFORE writing code. If the change has a visible or interactive surface, its `automated-qa` skill is a hard requirement before manual QA handoff, run at the point the review gate specifies. If the repo has the `runelite-dev` plugin enabled, respect its Java 11 main-source constraint (see its `run-tests` skill).
+8. Check for domain plugins before coding. If the repo has the `minecraft-modding` plugin enabled and the change touches gametest code or entrypoints, invoke its `gametest` skill BEFORE writing code. If the change has a visible or interactive surface, its `scripted-qa` skill is a hard requirement before manual QA handoff, run at the point the review gate specifies. Reach for its `playtest` skill instead when the question is how the feature plays rather than whether one change works: before a release, when the surface can only be reached by progressing through the game, or when asked to explore rather than to prove. If the repo has the `runelite-dev` plugin enabled, respect its Java 11 main-source constraint (see its `run-tests` skill).
 9. Run the `pr` skill as part of build after validation passes, opening the PR as a draft (`gh pr create --draft ...`).
 10. The review gate below is mandatory. A draft PR never becomes ready for review while it has open blockers from that gate.
 11. Automated QA runs only after the review gate is clear, so evidence is captured once against final code.
@@ -62,7 +62,7 @@ Runs between opening the draft PR and marking it ready for review. Every step, i
 4. **Confirm every fix reached the PR.** After pushing, check that the PR's head commit matches the worktree's, so a commit made on the wrong branch cannot pass as shipped.
 5. **Re-run the gate** when the fixes changed design or behaviour. Stop once a review returns no blockers.
 6. **Strip any comments the change introduced.** Run the `strip-comments` skill over the files this branch touched, not the whole repo: the point here is that the implementation left no comments behind, and a repo-wide pass would bury the change under an unrelated rewrite. Follow that skill's verification step rather than trusting the strip, then re-run `commands.format`, `commands.test`, and `commands.build` and push. On a repo that already carries no comments this is a no-op and costs one command.
-7. **Then run automated QA**, for example `automated-qa` from the `minecraft-modding` plugin for a visible surface. Running it earlier means capturing evidence for code that is about to change, and stripping comments is a change.
+7. **Then run automated QA**, for example `scripted-qa` from the `minecraft-modding` plugin for a visible surface. Running it earlier means capturing evidence for code that is about to change, and stripping comments is a change. `scripted-qa` is the one that belongs in a build: it proves this change with evidence the PR can carry. `playtest` answers a different question and is not a substitute for it, so run that separately when a release or an exploratory pass is what was asked for, and report its findings as issues rather than as PR evidence.
 8. **Mark the PR ready**: `gh pr ready <number> --repo <slug>`.
 
 ## Board Status Policy
@@ -90,4 +90,4 @@ Runs between opening the draft PR and marking it ready for review. Every step, i
 - `pr-local-review`, the mandatory review gate, run in an Opus subagent against the draft PR
 - `strip-comments`, run in the review gate so no branch reaches review carrying comments it introduced
 - `config`, for how repo settings are resolved
-- Domain plugins layer on top: `minecraft-modding` adds `gametest`, `automated-qa`, `run-game-client`; `runelite-dev` adds its client runner and release flow
+- Domain plugins layer on top: `minecraft-modding` adds `gametest`, `scripted-qa`, `playtest`, `run-game-client`; `runelite-dev` adds its client runner and release flow

@@ -79,7 +79,7 @@ Blockbench stays the right tool for models and their UV textures.
 8. **Commit the PNG only.** Leave the `.sprite.txt` in your scratch directory and let it be thrown
    away. The committed PNG is the sprite.
 
-9. **Verify in the client** with `automated-qa`: hotbar, inventory, tooltip, and the held model at
+9. **Verify in the client** with `scripted-qa`: hotbar, inventory, tooltip, and the held model at
    GUI scale 1 and 4. `item/generated` extrudes the sprite into a 3D held model, so a sprite that
    looks fine in a slot can still read badly in hand.
 
@@ -187,10 +187,10 @@ Say so and pick a simpler read rather than shipping something mushy.
 - [ ] The outline uses two tones, and neither is pure black
 - [ ] The scales strip was viewed, and the sprite reads at 1x
 - [ ] The item model JSON exists and points at the right texture id
-- [ ] `automated-qa` captured it in the hotbar, in the inventory, and held in hand
+- [ ] `scripted-qa` captured it in the hotbar, in the inventory, and held in hand
 
 ## Related Skills
 
-- `automated-qa`, verifying the sprite in the live client and attaching the evidence to the PR
+- `scripted-qa`, verifying the sprite in the live client and attaching the evidence to the PR
 - `geo-prop`, the GeckoLib path, for 3D models rather than flat sprites
 - dev-workflow `build` and `pr`, shipping the change

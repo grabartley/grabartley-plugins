@@ -85,4 +85,4 @@ Before pushing changes:
 ## Related Skills
 
 - `gametest`, required before authoring or editing any gametest
-- `automated-qa`, for verifying visible surfaces in the live client
+- `scripted-qa`, for verifying visible surfaces in the live client

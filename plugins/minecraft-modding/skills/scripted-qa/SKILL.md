@@ -1,9 +1,9 @@
 ---
-name: automated-qa
-description: Programmatically drive the game with a temporary in-process QA driver, capture framebuffer screenshots of the feature under test, verify them, and attach the evidence to the PR. Runs either singleplayer against an integrated server, or multiplayer against a local dedicated server with one or more connected clients. Use for any change with a visible, interactive, or multiplayer surface BEFORE handing off to manual QA.
+name: scripted-qa
+description: Prove one known change in the real game by running a predetermined scenario: a temporary in-process driver executes a fixed script, captures framebuffer screenshots of the feature under test, verifies them, and attaches the evidence to the PR. Runs either singleplayer against an integrated server, or multiplayer against a local dedicated server with one or more connected clients. Use for any change with a visible, interactive, or multiplayer surface BEFORE handing off to manual QA. For open-ended "does this feel right, what will a player hit" exploration, use `playtest` instead.
 ---
 
-# Automated QA
+# Scripted QA
 
 Drive the real game programmatically, capture framebuffer screenshots of the feature under test,
 verify them, and attach the evidence to the PR. Use this after implementing any change with a
@@ -529,6 +529,7 @@ files in its `pr-<number>/` directory in a new commit, which only ever affects t
 ## Related Skills
 
 - dev-workflow `build` — requires this skill before manual QA handoff
+- `playtest` — the exploratory counterpart: the agent plays the game live and reasons between inputs, instead of running a fixed script
 - `run-game-client` — plain manual launch, used when a human is driving
 - dev-workflow `worktree` — provides the isolated `run/` directory this skill relies on
 - `item-sprite`, authoring a flat item sprite; this skill verifies the result in the client
