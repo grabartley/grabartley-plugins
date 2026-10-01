@@ -19,7 +19,14 @@ import sys
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FONT_BLACK = '/System/Library/Fonts/Supplemental/Arial Black.ttf'
+FONT_CANDIDATES = ['/System/Library/Fonts/Supplemental/Arial Black.ttf', '/usr/share/fonts/truetype/msttcorefonts/Arial_Black.ttf',
+                   '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'C:/Windows/Fonts/ariblk.ttf']
+FONT_BLACK = next((f for f in FONT_CANDIDATES if os.path.exists(f)), None)
+DECODED = {}
+
+
+def font(size):
+    return ImageFont.truetype(FONT_BLACK, size) if FONT_BLACK else ImageFont.load_default(size)
 COLOURS = {'white': (255, 255, 255), 'gold': (243, 196, 82)}
 RATE = 48000
 
@@ -41,16 +48,20 @@ def beat_grid(music):
     on = [max(0, env[i] - env[i - 1]) for i in range(1, len(env))]
     mean = sum(on) / len(on)
     on = [v - mean for v in on]
-    coarse = max((sum(on[i] * on[i + lag] for i in range(0, len(on) - lag, 7)), lag) for lag in range(300, 1000, 5))[1]
-    period = max((sum(on[i] * on[i + lag] for i in range(0, len(on) - lag, 3)), lag)
-                 for lag in range(coarse - 6, coarse + 7))[1]
+    def corr(lag, step=3):
+        return sum(on[i] * on[i + lag] for i in range(0, len(on) - lag, step))
+    coarse = max((corr(lag, 7), lag) for lag in range(300, 1000, 5))[1]
+    lag = max((corr(lag), lag) for lag in range(coarse - 6, coarse + 7))[1]
+    a, b, c = corr(lag - 1), corr(lag), corr(lag + 1)
+    period = lag + (0.5 * (a - c) / (a - 2 * b + c) if a - 2 * b + c else 0.0)
     while period > 600:
-        period //= 2
-    phase = max((sum(on[p + k * period] for k in range((len(on) - p) // period)), p) for p in range(period))[1]
+        period /= 2
+    phase = max((sum(on[int(p + k * period)] for k in range(int((len(on) - p) / period) - 1)), p) for p in range(int(period)))[1]
     return period / 1000.0, phase / 1000.0
 
 
-def decode(path, cache={}):
+def decode(path):
+    cache = DECODED
     if path not in cache:
         raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', path, '-ac', '1', '-ar', str(RATE), '-f', 'f32le', '-'],
                              capture_output=True, check=True).stdout
@@ -77,10 +88,14 @@ def mix(events, duration, out):
     run('-f', 'f32le', '-ar', str(RATE), '-ac', '2', '-i', out + '.f32', out)
 
 
+def music_path(cfg):
+    return cfg['music'] if os.path.isabs(cfg['music']) else os.path.join(cfg['takes_dir'], cfg['music'])
+
+
 class Version:
     def __init__(self, cfg, name, beat, first_beat):
         self.cfg, self.v, self.name = cfg, cfg['versions'][name], name
-        self.dir = cfg['dir']
+        self.dir, self.work = cfg['takes_dir'], cfg['work_dir']
         self.W, self.H = self.v.get('size', (1920, 1080) if name == 'horizontal' else (1080, 1920))
         self.beat, self.first_beat = beat, first_beat
         self.clips, at = [], 0
@@ -90,17 +105,17 @@ class Version:
             at += beats
         self.duration = at * beat
         self.events, self.zooms, self.shakes, self.captions = [], [], [], []
+        self.drop = self.time(self.v.get('hook_beats', self.clips[0]['beats']))
 
-    def time(self, spec):
+    def times(self, spec):
         if isinstance(spec, str) and spec.startswith('raw:'):
             raw = float(spec[4:])
-            for c in self.clips:
-                if c['a'] <= raw < c['b']:
-                    return c['start'] + (raw - c['a']) / c['speed']
-            return None
-        if spec == 'end':
-            return self.duration
-        return float(spec) * self.beat
+            return [c['start'] + (raw - c['a']) / c['speed'] for c in self.clips if c['a'] <= raw < c['b']]
+        return [self.duration if spec == 'end' else float(spec) * self.beat]
+
+    def time(self, spec):
+        found = self.times(spec)
+        return found[-1] if found else None
 
     def path(self, name):
         return name if os.path.isabs(name) else os.path.join(self.dir, name)
@@ -113,9 +128,9 @@ class Version:
         for t, loc, volume, pitch, x, y, z, attenuation, _ in csv.reader(open(self.path(self.v['take'] + '_sounds.csv'))):
             if float(t) < 0 or any(s in loc for s in skip):
                 continue
-            when = self.time(f'raw:{float(t) / 20.0}')
+            whens = self.times(f'raw:{float(t) / 20.0}')
             ns, rel = loc.split(':', 1)
-            if when is None or (ns == 'minecraft' and 'minecraft/' + rel not in index) or (ns != 'minecraft' and ns not in roots):
+            if not whens or (ns == 'minecraft' and 'minecraft/' + rel not in index) or (ns != 'minecraft' and ns not in roots):
                 continue
             if ns == 'minecraft':
                 h = index['minecraft/' + rel]['hash']
@@ -130,11 +145,13 @@ class Version:
             if gain > 0.003:
                 yr = math.radians(yaw)
                 pan = max(-1, min(1, 0.6 * (-dx * math.cos(yr) - dz * math.sin(yr)) / (math.hypot(dx, dz) or 1)))
-                self.events.append((when, file, gain, pitch, pan))
+                self.events.extend((when, file, gain, pitch, pan) for when in whens)
 
     def text_image(self, lines, sizes, name):
         sizes = sizes if isinstance(sizes, list) else [sizes] * len(lines)
-        fonts = [ImageFont.truetype(FONT_BLACK, s) for s in sizes]
+        if len(sizes) != len(lines):
+            raise SystemExit(f'caption {lines} has {len(lines)} lines but {len(sizes)} sizes')
+        fonts = [font(s) for s in sizes]
         stroke = max(6, max(sizes) // 9)
         probe = ImageDraw.Draw(Image.new('RGBA', (4, 4)))
         widths = [sum(probe.textlength(t, font=fonts[i]) for t, _ in line) for i, line in enumerate(lines)]
@@ -148,25 +165,25 @@ class Version:
                        stroke_width=stroke, stroke_fill=(12, 10, 8, 255))
                 x += probe.textlength(text, font=fonts[i])
             y += heights[i]
-        if img.width > self.W * 0.94:
-            raise SystemExit(f'caption {lines} is {img.width}px wide, wider than the frame: shrink its size')
+        limit = self.W * (0.94 if self.W > self.H else 0.9)
+        if img.width * 1.15 > limit:
+            raise SystemExit(f'caption {lines} is {img.width}px wide and pops to {img.width * 1.15:.0f}px, over {limit:.0f}px: shrink it')
         out = Image.new('RGBA', img.size, (0, 0, 0, 0))
         shadow = Image.new('RGBA', img.size, (0, 0, 0, 0))
         shadow.paste((0, 0, 0, 150), (0, 0), img.split()[3].filter(ImageFilter.GaussianBlur(7)))
         out.alpha_composite(shadow, (5, 7))
         out.alpha_composite(img)
-        path = os.path.join(self.dir, f'{self.name}_cap_{name}.png')
+        path = os.path.join(self.work, f'{self.name}_cap_{name}.png')
         out.save(path)
-        return path
+        return path, out.height
 
     def build(self, index):
         v = self.v
         self.game_sounds(index)
         for s in v.get('extra_sounds', []):
-            when = self.time(s['at'])
-            if when is not None:
+            for when in self.times(s['at']):
                 self.events.append((when, self.path(s['file']), s.get('gain', 0.3), s.get('pitch', 1.0), s.get('pan', 0.0)))
-        drop = self.time(v.get('hook_beats', 4))
+        drop = self.drop
         self.events.append((drop, os.path.join(HERE, 'fx_boom.wav'), 0.9, 1.0, 0.0))
         self.zooms.append((drop, 0.10))
         for p in v.get('punches', []):
@@ -180,6 +197,8 @@ class Version:
                 self.events.append((when, os.path.join(HERE, 'fx_boom.wav'), 0.55, 1.0, 0.0))
         for i, b in enumerate(v.get('whips', [])):
             c = self.time(b)
+            if c is None:
+                continue
             self.zooms.append((c, -0.16))
             self.events.append((c - 0.30, os.path.join(HERE, f'fx_whoosh{i % 2 + 1}.wav'), 0.55, 1.0, 0.0))
         anchors = {'head': self.H * 0.19 if self.H > self.W else self.H * 0.2, 'center': self.H / 2 - (60 if self.H > self.W else 40),
@@ -189,7 +208,10 @@ class Version:
             if a is None or b is None:
                 continue
             y = anchors.get(c.get('y', 'low'), c.get('y'))
-            self.captions.append((self.text_image(c['lines'], c.get('size', 84), i), a, b, y, c.get('pop', True)))
+            path, h = self.text_image(c['lines'], c.get('size', 84), i)
+            if y - h * 0.58 < 0 or y + h * 0.58 > self.H:
+                raise SystemExit(f'caption {c["lines"]} at y={y} runs off the frame')
+            self.captions.append((path, a, b, y, c.get('pop', True)))
 
     def zoom_expr(self):
         terms = [f'{a}*if(lt(t,{c:.4f}),exp(-pow((t-{c:.4f})/0.035,2)),exp(-pow((t-{c:.4f})/0.22,2)))' if a >= 0
@@ -223,28 +245,28 @@ class Version:
         end_fade = v.get('end_fade', 0.6 if self.W > self.H else 0)
         tail = f'fade=t=out:st={self.duration - end_fade:.3f}:d={end_fade},' if end_fade else ''
         parts.append(f'[{cur}]{tail}format=yuv420p[vout]')
-        graph = os.path.join(self.dir, f'{self.name}_graph.txt')
+        graph = os.path.join(self.work, f'{self.name}_graph.txt')
         open(graph, 'w').write(';'.join(parts))
 
-        sfx = os.path.join(self.dir, f'{self.name}_sfx.wav')
+        sfx = os.path.join(self.work, f'{self.name}_sfx.wav')
         mix(self.events, self.duration, sfx)
-        drop = self.time(v.get('hook_beats', 4))
+        drop = self.drop
         music_fade = v.get('music_fade', 2.4 if self.W > self.H else 0.5)
-        music = os.path.join(self.dir, f'{self.name}_music.wav')
-        run('-i', self.path(self.cfg['music']), '-filter_complex',
+        music = os.path.join(self.work, f'{self.name}_music.wav')
+        run('-i', music_path(self.cfg), '-filter_complex',
             f'[0:a]atrim=start={self.first_beat},asetpts=PTS-STARTPTS,aresample={RATE},asplit=2[m1][m2];'
             f'[m1]atrim=0:{drop:.4f},lowpass=f=650,lowpass=f=650,volume=-3dB[hook];'
             f'[m2]atrim=start={drop:.4f},asetpts=PTS-STARTPTS[main];'
             f'[hook][main]concat=n=2:v=0:a=1,atrim=0:{self.duration:.4f},volume=-11dB,'
             f'afade=t=out:st={self.duration - music_fade:.3f}:d={music_fade}[m]', '-map', '[m]', music)
-        pre = os.path.join(self.dir, f'{self.name}_premaster.wav')
+        pre = os.path.join(self.work, f'{self.name}_premaster.wav')
         run('-i', music, '-i', sfx, '-filter_complex',
             '[1:a]asplit=2[key][fx];[0:a][key]sidechaincompress=threshold=0.04:ratio=4:attack=10:release=280[bed];'
             '[fx]volume=2.0[fxl];[bed][fxl]amix=inputs=2:normalize=0,alimiter=limit=0.95:level=false[m]', '-map', '[m]', pre)
         m = subprocess.run(['ffmpeg', '-hide_banner', '-i', pre, '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json',
                             '-f', 'null', '-'], capture_output=True, text=True).stderr
         s = json.loads(m[m.rindex('{'):m.rindex('}') + 1])
-        master = os.path.join(self.dir, f'{self.name}_master.wav')
+        master = os.path.join(self.work, f'{self.name}_master.wav')
         run('-i', pre, '-af', f"loudnorm=I=-14:TP=-1.5:LRA=11:measured_I={s['input_i']}:measured_TP={s['input_tp']}:"
                               f"measured_LRA={s['input_lra']}:measured_thresh={s['input_thresh']}:offset={s['target_offset']}:linear=true",
             '-ar', str(RATE), master)
@@ -253,7 +275,7 @@ class Version:
         run('-i', self.path(v['take'] + '.mp4'), '-i', master, *caps, '-/filter_complex', graph, '-map', '[vout]', '-map', '1:a',
             '-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-profile:v', 'high', '-level', '4.2', '-g', '15', '-bf', '2',
             '-r', '30', '-c:a', 'aac', '-b:a', '384k', '-ar', str(RATE), '-movflags', '+faststart', '-t', f'{self.duration:.3f}', out)
-        sheet = os.path.join(self.dir, f'{self.name}_contact.png')
+        sheet = os.path.join(self.work, f'{self.name}_contact.png')
         tw = 320 if W > H else 216
         run('-i', out, '-vf', f'fps=2,scale={tw}:-2,tile=10x{math.ceil(self.duration * 2 / 10)}', '-frames:v', '1', sheet)
         print(f'{self.name}: {out} ({self.duration:.2f}s, {len(self.events)} sounds). Contact sheet: {sheet}')
@@ -264,11 +286,13 @@ def thumbnail(cfg):
     W, H = 1280, 720
     shots = []
     for take, second, cx, cy in t['frames']:
-        png = os.path.join(cfg['dir'], f'thumb_{len(shots)}.png')
-        run('-ss', str(second), '-i', os.path.join(cfg['dir'], take + '.mp4'), '-frames:v', '1', png)
+        png = os.path.join(cfg['work_dir'], f'thumb_{len(shots)}.png')
+        run('-ss', str(second), '-i', os.path.join(cfg['takes_dir'], take + '.mp4'), '-frames:v', '1', png)
         im = Image.open(png).convert('RGB')
-        x0, y0 = max(0, min(im.width - 900, cx - 450)), max(0, min(im.height - 1012, cy - 506))
-        shots.append(im.crop((x0, y0, x0 + 900, y0 + 1012)).resize((848, H), Image.LANCZOS))
+        ch = min(im.height, int(im.width * H / 848), int(im.height * 0.94))
+        cw = int(ch * 848 / H)
+        x0, y0 = max(0, min(im.width - cw, cx - cw // 2)), max(0, min(im.height - ch, cy - ch // 2))
+        shots.append(im.crop((x0, y0, x0 + cw, y0 + ch)).resize((848, H), Image.LANCZOS))
     canvas = Image.new('RGB', (W, H))
     canvas.paste(shots[-1], (W - 848, 0))
     mask = Image.new('L', (848, H), 0)
@@ -281,7 +305,7 @@ def thumbnail(cfg):
     for y in range(260):
         ImageDraw.Draw(shade).line([(0, H - 260 + y), (W, H - 260 + y)], fill=(0, 0, 0, int(220 * (y / 260) ** 1.4)))
     canvas = Image.alpha_composite(canvas, shade)
-    big, small = ImageFont.truetype(FONT_BLACK, 96), ImageFont.truetype(FONT_BLACK, 40)
+    big, small = font(96), font(40)
     txt = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     td = ImageDraw.Draw(txt)
     lines = t['lines'][-2:]
@@ -295,19 +319,21 @@ def thumbnail(cfg):
         td.text((52, 34), t['tag'], font=small, fill=(20, 16, 10))
     glow = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     glow.paste((0, 0, 0, 170), (0, 0), txt.split()[3].filter(ImageFilter.GaussianBlur(9)))
-    out = os.path.join(cfg['dir'], t.get('out', 'thumbnail.jpg'))
+    out = os.path.join(cfg['takes_dir'], t.get('out', 'thumbnail.jpg'))
     Image.alpha_composite(Image.alpha_composite(canvas, glow), txt).convert('RGB').save(out, quality=93)
     print('thumbnail:', out)
 
 
 def main():
     cfg = json.load(open(sys.argv[1]))
-    cfg.setdefault('dir', os.path.dirname(os.path.abspath(sys.argv[1])))
+    cfg.setdefault('takes_dir', os.path.dirname(os.path.abspath(sys.argv[1])))
+    cfg.setdefault('work_dir', os.path.join(cfg['takes_dir'], 'work'))
+    os.makedirs(cfg['work_dir'], exist_ok=True)
     args = sys.argv[2:]
     if '--thumbnail' in args:
         return thumbnail(cfg)
-    music = cfg['music'] if os.path.isabs(cfg['music']) else os.path.join(cfg['dir'], cfg['music'])
-    beat, first = cfg.get('beat') or beat_grid(music)
+    music = cfg['music'] if os.path.isabs(cfg['music']) else os.path.join(cfg['takes_dir'], cfg['music'])
+    beat, first = (cfg['beat'], cfg.get('first_beat', 0.0)) if cfg.get('beat') else beat_grid(music)
     if '--beats' in args:
         return print(f'beat {beat:.4f}s ({60 / beat:.1f} bpm), first beat {first:.3f}s')
     index = asset_index()

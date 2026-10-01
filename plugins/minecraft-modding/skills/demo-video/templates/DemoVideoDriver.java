@@ -2,7 +2,7 @@ package com.example.mymod;
 
 // TEMPORARY DEMO DRIVER - copy into src/client of a throwaway worktree, NEVER commit.
 // Fill in buildStage() and script(). Everything else is the recording pipeline.
-// Run with: ./gradlew runClient (recipe viewers off). Ends itself with "[QA] DONE".
+// Run with ./gradlew runClient, any recipe viewer mods disabled. Ends itself with "[DEMO] DONE".
 
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -64,11 +64,11 @@ public final class DemoVideoDriver {
   private static int titleTicks;
   private static int worldTicks;
   private static boolean requested;
-  private static boolean built;
+  private static volatile boolean built;
   private static boolean started;
   private static boolean finished;
   private static BlockPos base;
-  private static long serverStart = -1;
+  private static volatile long serverStart = -1;
   private static long clientStart = -1;
   private static int nextEvent;
   private static long framesWritten;
@@ -180,10 +180,12 @@ public final class DemoVideoDriver {
             base.getX() + 70, base.getY() + 30, base.getZ() + 40, BIOME));
       }
       script(world);
+      KEYS.sort((a, b) -> Double.compare(a.t(), b.t()));
+      EVENTS.sort((a, b) -> Double.compare(a.t(), b.t()));
       built = true;
       System.out.println("[DEMO] built at " + base);
     } catch (Exception e) {
-      System.out.println("[QA] ERROR build " + e);
+      System.out.println("[DEMO] ERROR build " + e);
       e.printStackTrace();
     }
   }
@@ -279,7 +281,7 @@ public final class DemoVideoDriver {
           }
           pipe.close();
         } catch (Exception e) {
-          System.out.println("[QA] ERROR writer " + e);
+          System.out.println("[DEMO] ERROR writer " + e);
         }
       });
       writer.start();
@@ -291,7 +293,7 @@ public final class DemoVideoDriver {
       started = true;
       System.out.println("[DEMO] recording " + width + "x" + height);
     } catch (Exception e) {
-      System.out.println("[QA] ERROR start " + e);
+      System.out.println("[DEMO] ERROR start " + e);
       client.scheduleStop();
     }
   }
@@ -338,9 +340,9 @@ public final class DemoVideoDriver {
         CAMERA.forEach(out::println);
       }
       System.out.println("[DEMO] frames " + framesWritten + " sounds " + SOUNDS.size());
-      System.out.println("[QA] DONE");
+      System.out.println("[DEMO] DONE");
     } catch (Exception e) {
-      System.out.println("[QA] ERROR finish " + e);
+      System.out.println("[DEMO] ERROR finish " + e);
     }
     client.getServer().execute(() -> client.getServer().getTickManager().setTickRate(20.0f));
     client.scheduleStop();
