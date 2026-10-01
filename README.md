@@ -75,6 +75,7 @@ Fabric mod development on Minecraft 1.21.1 era tooling. Layers on top of dev-wor
 | `gametest` | Fabric GameTest authoring patterns: coordinates, batches, time pinning, mock players, flake diagnosis |
 | `scripted-qa` | Prove one known change by running a predetermined scenario in the real game, singleplayer or a local server with several clients, capture and verify screenshots, publish evidence to the PR |
 | `playtest` | Play the game live as a player would, real inputs only, deciding each step from what the last one returned, and report what a player would hit |
+| `demo-video` | Record a scripted showcase of a mod feature in the real client and edit it into a beat-synced YouTube video and a vertical Short, with real in-game sound, captions, music and a thumbnail |
 | `geo-prop` | Author GeckoLib props as reviewable text with an offline render loop |
 | `multiblock` | Build a block larger than 1x1x1 and prove its model lands on the cells it owns |
 | `item-sprite` | Author flat 16x16 sprites as palette-mapped text in scratch, shipping only the PNG |
