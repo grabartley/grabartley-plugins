@@ -8,7 +8,7 @@ description: Make a YouTube-ready showcase video of any feature of a Fabric mod,
 Record a scripted scene in the real game, then cut it on the music's beat with captions, effects and real in-game sound.
 
 - `templates/DemoVideoDriver.java` is a temporary client driver. You write the stage and the shot list; it records frames, sounds and camera positions.
-- `scripts/edit.py` renders each version from one JSON config, plus a thumbnail and contact sheets. It needs ffmpeg 7 or newer (for `-/filter_complex`) and Pillow. It does not need ffmpeg's `drawtext`.
+- `scripts/edit.py` renders each version from one JSON config, plus a thumbnail and contact sheets. It needs ffmpeg 7 or newer (for `-/filter_complex`) and Pillow 10.1 or newer. It does not need ffmpeg's `drawtext`.
 
 Spend tokens on the shot list and the cut. Never watch footage: read the sound log for timings and the contact sheets for framing, and run recordings in the background.
 
@@ -25,7 +25,7 @@ Read the feature's issue or README. Write 4 to 6 scenes, each showing one claim 
 ## 2. Record
 
 1. Make a throwaway worktree with the `dev-workflow:worktree` skill and copy `run/` into it. Commit nothing from it, and remove it at the end.
-2. Copy the template into `src/client/java/<pkg>/`. Set the constants: `WORLD`, `OUT` (an absolute path to the takes folder), `TAKE` and `END`. Fill in `buildStage()` using `flatten`, `put` and `at`, and `script()` using `cut`, `key` and `at`. Add `DemoVideoDriver.register();` to the client initializer.
+2. Copy the template into `src/client/java/<pkg>/`. Set the constants: `WORLD`, `OUT` (an absolute path to the takes folder), `TAKE`, `END`, and `BIOME` (it repaints the stage so grass isn't tinted; null keeps the world's colours). Fill in `buildStage()` using `flatten`, `put` and `at`, and `script()` using `cut`, `key` and `at`. Add `DemoVideoDriver.register();` to the client initializer.
 3. Set these in `run/options.txt`: `pauseOnLostFocus:false`, `onboardAccessibility:false`, `soundCategory_music:0.0` and `bobView:false`. Set the window to `overrideWidth:960`/`overrideHeight:540` for horizontal, or `540`/`960` plus `fov:0.375` for vertical. Record vertical natively; never crop it from horizontal.
 4. Before every take, restore a clean copy of the save from the main checkout. The stage is built around the player, and a take leaves the player wherever the camera ended.
 5. Disable any recipe viewer mods, then run `./gradlew runClient` in the background. Wait for `[DEMO] DONE` in its log. Each take writes `<TAKE>.mp4`, `<TAKE>_sounds.csv` and `<TAKE>_camera.csv` to `OUT`. Give every take a unique `TAKE` name (for example `take_h`, `take_v`) so no run overwrites a good one. A take takes about 5 times its length to record.
@@ -52,7 +52,7 @@ Take timings from the sound log, not the footage. Each row of `<TAKE>_sounds.csv
         {"from": 8, "to": 14, "lines": [[["SHORT ", "white"], ["CLAIM", "gold"]]], "size": 78}
       ]
     },
-    "vertical": {"take": "take_v", "out": "/abs/out/<name>-short.mp4"}
+    "vertical": {"take": "take_v", "out": "/abs/out/<name>-short.mp4", "clips": [{"raw": [12.2, 13.9, 4]}]}
   },
   "thumbnail": {"frames": [["take_h", 3.6, 960, 520], ["take_h", 23.4, 1000, 600]],
                 "lines": ["<FEATURE ONE>", "& <FEATURE TWO>"], "tag": "NEW IN <MOD>", "out": "/abs/out/thumb.jpg"}
@@ -61,6 +61,7 @@ Take timings from the sound log, not the footage. Each row of `<TAKE>_sounds.csv
 
 | Key | Meaning |
 |---|---|
+| `versions.<name>` | `horizontal` and/or `vertical`. Each version needs its own `take` and `clips`; every other key is optional. |
 | `clips[].raw` | `[start_s, end_s, beats]`. The clip lasts exactly that many beats, so every cut lands on the beat and the speed is derived. `filter` is an optional ffmpeg crop that punches in on a wide shot. |
 | Times | A number is a beat index, `"raw:<s>"` is a moment in the take, and `"end"` is the end of the video. Sounds play in every clip containing their raw time. A raw punch or caption uses the last clip that contains it. |
 | `punches` | Zoom on an impact. `shake` is in pixels; `boom` adds a sub hit. |
@@ -90,6 +91,5 @@ Put the videos, the thumbnail and a `youtube-copy.md` in the deliverables folder
 
 ## Gotchas
 
-- **A grass biome that isn't plains tints the stage.** The driver repaints it as `BIOME`; set it to null to keep the world's own colours.
 - **Stray world sounds (minecarts, mobs) land in the log.** List them in `skip_sounds`.
 - **A tall entity standing in the way of a closing or moving block stops it before it visibly moves.** For obstruction shots, use a short mob with AI off.

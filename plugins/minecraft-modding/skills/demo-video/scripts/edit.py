@@ -23,12 +23,12 @@ FONT_CANDIDATES = ['/System/Library/Fonts/Supplemental/Arial Black.ttf', '/usr/s
                    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'C:/Windows/Fonts/ariblk.ttf']
 FONT_BLACK = next((f for f in FONT_CANDIDATES if os.path.exists(f)), None)
 DECODED = {}
+COLOURS = {'white': (255, 255, 255), 'gold': (243, 196, 82)}
+RATE = 48000
 
 
 def font(size):
     return ImageFont.truetype(FONT_BLACK, size) if FONT_BLACK else ImageFont.load_default(size)
-COLOURS = {'white': (255, 255, 255), 'gold': (243, 196, 82)}
-RATE = 48000
 
 
 def run(*args):
@@ -207,7 +207,10 @@ class Version:
             a, b = self.time(c['from']), self.time(c['to'])
             if a is None or b is None:
                 continue
-            y = anchors.get(c.get('y', 'low'), c.get('y'))
+            if b <= a:
+                raise SystemExit(f'caption {c["lines"]} ends at {b:.2f}s, before it starts at {a:.2f}s')
+            y = anchors.get(c.get('y', 'low'))
+            y = float(c['y']) if y is None else y
             path, h = self.text_image(c['lines'], c.get('size', 84), i)
             if y - h * 0.58 < 0 or y + h * 0.58 > self.H:
                 raise SystemExit(f'caption {c["lines"]} at y={y} runs off the frame')
@@ -332,7 +335,7 @@ def main():
     args = sys.argv[2:]
     if '--thumbnail' in args:
         return thumbnail(cfg)
-    music = cfg['music'] if os.path.isabs(cfg['music']) else os.path.join(cfg['takes_dir'], cfg['music'])
+    music = music_path(cfg)
     beat, first = (cfg['beat'], cfg.get('first_beat', 0.0)) if cfg.get('beat') else beat_grid(music)
     if '--beats' in args:
         return print(f'beat {beat:.4f}s ({60 / beat:.1f} bpm), first beat {first:.3f}s')
