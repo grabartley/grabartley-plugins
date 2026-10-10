@@ -7,6 +7,8 @@ description: Turn a mod concept, a pile of requirements, or an existing issue ba
 
 A mod PRD answers one question: **what is this mod**. Which use cases it serves, who is allowed to do what, which side enforces each rule, and what it deliberately does not do.
 
+For software that is not a Minecraft mod, use the dev-workflow `prd` skill instead.
+
 It is not a plan, not a design document, and not a tracker. Those exist elsewhere and this must not duplicate them, because a second source of truth drifts within a week and then neither can be trusted.
 
 ## Two Rules That Shape Everything
