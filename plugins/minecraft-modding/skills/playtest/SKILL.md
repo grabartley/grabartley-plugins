@@ -221,6 +221,8 @@ mod listens for can never arrive" is a finding, and the second one is what gets 
 ## Related Skills
 
 - `scripted-qa` — the same client, driven by a fixed scenario, for proving one known change with
-  evidence attached to a PR
+  evidence attached to a PR. Its live session shares this skill's inbox loop and adds `/qa`
+  staging commands, an orbiting camera and contact sheets, which suit working through a long
+  visual QA checklist in one launch
 - `run-game-client` — plain manual launch when a human is driving
 - dev-workflow `build` — the flow both of these plug into

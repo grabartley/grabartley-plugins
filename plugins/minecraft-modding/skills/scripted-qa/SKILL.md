@@ -1,6 +1,6 @@
 ---
 name: scripted-qa
-description: Prove one known change in the real game by running a predetermined scenario: a temporary in-process driver executes a fixed script, captures framebuffer screenshots of the feature under test, verifies them, and attaches the evidence to the PR. Runs either singleplayer against an integrated server, or multiplayer against a local dedicated server with one or more connected clients. Use for any change with a visible, interactive, or multiplayer surface BEFORE handing off to manual QA. For open-ended "does this feel right, what will a player hit" exploration, use `playtest` instead.
+description: Prove known changes in the real game with predetermined scenarios: a temporary in-process driver runs either a fixed script or a live session of many staged checks against one long-lived client, captures framebuffer screenshots of the feature under test, verifies them, and attaches the evidence to the PR. Runs either singleplayer against an integrated server, or multiplayer against a local dedicated server with one or more connected clients. Use for any change with a visible, interactive, or multiplayer surface BEFORE handing off to manual QA, and to work through a manual QA checklist yourself instead of handing it to a human. For open-ended "does this feel right, what will a player hit" exploration, use `playtest` instead.
 ---
 
 # Scripted QA
@@ -35,6 +35,110 @@ closes.
 Do not reach for multiplayer merely because the mod is multiplayer-first. One client is faster,
 quieter, and enough for most visible surfaces.
 
+Separately from the mode, decide **how many scenarios** the run has to cover. One known change
+with one or two shots fits the fixed state machine in `templates/QaDriver.java`. A QA checklist
+with many items, or any visual work where framing will need a few tries, belongs in a **live
+session**, described next. It works in both modes.
+
+## Live Session: Many Checks, One Launch
+
+The fixed state machine costs a recompile and a relaunch for every scenario and for every framing
+fix: compile, client launch, title screen, world load, then the scenario, roughly 25 to 40 seconds
+before the first useful frame, plus rewriting Java each time. A live session pays that once. The
+client stays up and runs commands the agent appends to a file, so each further check costs only
+its own seconds.
+
+It has two temporary pieces and four helper scripts:
+
+| File | Where it goes | What it does |
+|---|---|---|
+| `templates/LiveQaDriver.java` | `src/client/java/<pkg>/qa/`, registered from `onInitializeClient()` | reads `<runDir>/qa-in.txt`, runs one command per step, logs to `<runDir>/qa-out.txt` |
+| `templates/QaCommands.java` | `src/main/java/<pkg>/qa/`, registered from `onInitialize()` | a temporary `/qa` command tree that stages scenes: spawn by tag, AI on or off, sit, hurt, probe state, list hostile mobs and their targets, list players, clear |
+| `scripts/qa.sh` | run from the shell | appends commands, waits until they have all run, prints what the driver logged |
+| `scripts/orbit.sh` | run from the shell | prints front, three-quarter, left and right shots of one entity |
+| `scripts/sheet.py`, `scripts/contrast.py` | run from the shell | contact sheets and centre zooms for reading many shots at once; contrast ratio between two pixels |
+
+Because staging goes through real brigadier commands, the same tree serves singleplayer (the
+driver runs the command on the integrated server at op level 4) and multiplayer (an op player
+sends it as a chat command). Add mod-specific subcommands to `QaCommands` (equip an item, put a pet
+to bed, set a variant) rather than writing Java into the driver. Vanilla commands (`time set`,
+`effect`, `summon`, `fill`, `damage`, `gamemode`) cover the rest through `cmd`. In multiplayer,
+make the clients op through the server's `ops.json`; offline-mode UUIDs are the name-based UUID of
+`OfflinePlayer:<name>`.
+
+### Driver commands
+
+- Session: `until title|world|overlay`, `world <save>`, `connect <host:port>`, `leave`, `wait <ticks>`,
+  `mark <text>`, `quit`, `abort`.
+- Staging: `cmd <command>` runs any server command as this player.
+- Camera: `cam <entityId> <angle> <dist> <up> [focusUp|-] [focusFwd]` teleports the player so its eye
+  looks at a point on the entity. `angle` is measured from the entity's body yaw, so `0` is the
+  front, `90` its left side, `-90` its right. `look <yaw> <pitch>`, `hud on|off`, `gui <scale>`.
+- Evidence: `sshot <name> [settleTicks]` saves `qa_<username>_<name>.png` after a settle.
+- Screens: `inv`, `hover <slotId>` (forced mouse, so tooltips render unfocused), `useblock x y z`,
+  `slotclick <slotId> [button] [action]`, `slots`, `widgets`, `clickw <index>`, `clicka x y`,
+  `type <text>`, `close`, `hotbar <n>`, `lang <code>`.
+- Reading back: `state`, and `recipes <namespace>`, which lists each recipe and whether this
+  player's recipe book has it unlocked.
+
+`/qa` replies of the form `qa: var <tag>=<entityId>` set `$<tag>` in the driver, so a staging
+command and the shots that follow can be written in one batch:
+
+```bash
+bash scripts/qa.sh run <<'EOF'
+cmd gamemode spectator
+cmd qa spawn pet1 <modid>:<entity> 20.5 65 0.5 0
+hud off
+EOF
+bash scripts/orbit.sh pet1 look_pet1 1.6 0.1 - 0.3 | bash scripts/qa.sh run
+```
+
+The driver is strict on purpose. An `ERROR` (an exception, a command the server rejected, an
+unresolved `$name`, an `until` that timed out) drops the rest of the queue, and `qa.sh` returns as
+soon as it sees one. A batch never carries on staging the wrong scene. Send `quit` with a plain
+append rather than through `qa.sh`, since the client exits before it can log the end marker.
+
+### Running a checklist
+
+1. Launch once, wait for `[QA] READY` in the client log, then send `until title` and `world <save>`
+   (or `connect`). Keep the game up until the whole checklist is done.
+2. Per item: stage with `cmd`, assert with `/qa probe`, `/qa mobs` or `/qa players`, photograph with
+   `cam` and `sshot`. Prefer asserting state over reading pixels for behaviour; keep pixels for how
+   things look.
+3. Pair every behaviour check with a **control**: the same scene without the item, effect or upgrade
+   under test, side by side or straight after. "The warded mob ignored the player" means nothing
+   until the unwarded mob, in the same place, attacks.
+4. Read shots in contact sheets: `sheet.py out.png 0.5 4 shots...` puts several angles of one
+   subject in one image, and a crop of `0.2` to `0.3` zooms on the focus point. Then read every
+   sheet in the two passes from **Reading The Screenshots**. For a question of contrast, measure it
+   with `contrast.py` rather than eyeballing it.
+5. Time each phase (compile, launch, world load, each batch, reading) from the log and `qa.sh`'s
+   `[took Ns]` lines, so slow steps are visible.
+6. Revert both registration lines and delete the `qa/` packages when done.
+
+### What the live session taught
+
+- **Owned entities may be pulled to their owner.** A mod that brings pets along on a long teleport
+  moves every spawned pet to the camera the moment `cam` teleports the player, and the next shot is
+  taken from inside a pet. Spawn owned entities sitting or on a stay command before moving the
+  camera. The template's `spawn` sits tameable entities for this reason.
+- **AI-disabled mobs never run goals or `move()`.** Poses driven by a goal (sitting, begging) never
+  apply, and block collisions never happen, so a mob stands in fire unharmed whether or not the
+  feature works. Turn AI back on for those checks, with the entity sitting or anchored so it stays
+  in frame.
+- **Tag lookups only see loaded entities.** After a rejoin or a long move, `/qa find` fails for
+  anything in an unloaded chunk. Move a player near it first.
+- **The hitbox is not the model.** Renderers often scale per variant, so one camera distance and
+  focus height frames every variant differently. Tune `cam` per variant and confirm with a
+  wide shot before the close-ups.
+- **A language reload outlives its future.** The reload future completes while the loading overlay
+  is still fading in, so a shot taken then is a red loading screen. `lang` waits for the overlay
+  to clear; use `until overlay` after anything else that reloads resources.
+- **Night shots are unreadable.** Give the camera player night vision before photographing
+  anything staged at night.
+- **Staging scripts are bash.** zsh does not word-split `set -- $var`, so a loop over
+  `"name value"` pairs silently passes the wrong arguments. Run helper loops with `bash`.
+
 ## Config
 
 Read per the dev-workflow `config` skill:
@@ -52,7 +156,8 @@ All driver code is TEMPORARY and must never be committed. It exists only in the 
 1. Create `src/client/java/<pkg-path>/<Feature>QaDriver.java` from
    `templates/QaDriver.java` (singleplayer) or `templates/MultiplayerQaDriver.java`
    (multiplayer) in this skill directory. It is a tick-driven state machine registered on
-   `ClientTickEvents.END_CLIENT_TICK`.
+   `ClientTickEvents.END_CLIENT_TICK`. For a live session, use `templates/LiveQaDriver.java` and
+   `templates/QaCommands.java` instead, per **Live Session: Many Checks, One Launch**.
 2. Register it with one line at the end of the mod's client initializer `onInitializeClient()`:
    `<Feature>QaDriver.register();`
 3. Multiplayer only: also create `src/main/java/<pkg-path>/<Feature>ServerQaDriver.java` from
@@ -520,6 +625,8 @@ files in its `pr-<number>/` directory in a new commit, which only ever affects t
       client was really connected
 - [ ] Multiplayer only: run configs, server run directory, and per-client run directories reverted
       or left untracked; nothing QA-only committed
+- [ ] Live session only: every behaviour check had a control, and every batch ended on its marker
+      rather than on an `ERROR` or a timeout
 - [ ] Temp driver + initializer hook reverted; `git status` shows only intended files
 - [ ] Evidence pushed to the `<imagesBranch>` branch under `pr-<number>/` and embedded in the PR
       body; nothing image-related committed to the PR branch
