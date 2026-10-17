@@ -184,21 +184,15 @@ Other useful end-of-test helpers from `TestContext`:
 
 Use these when you're verifying steady-state. Use `runAtTick` + imperative `assertTrue` when you're verifying a transition mid-test.
 
-## Rule 8: Use `@GameTest(maxAttempts = N, requiredSuccesses = 1)` for inherent races
+## Rule 8: `maxAttempts` does not retry anything under `runGametest`
 
-For tests that depend on goal selector timing, AI navigation, or world tick ordering, the framework supports retries:
+`@GameTest(maxAttempts = 3, requiredSuccesses = 1)` reads like a flake guard. On the 1.21.1 headless `TestServer` that `runGametest` and CI use, it is not one. A failed first attempt fails the run, whether or not a retry is queued:
 
-```java
-@GameTest(
-    templateName = "<modid>:arena",
-    batchId = "sleep-time",
-    tickLimit = 200,
-    maxAttempts = 3,
-    requiredSuccesses = 1)
-public void manualNightWakePetAutoSleepsNextNight(TestContext context) { ... }
-```
+- `TestServer.setupServer` builds its `TestSet` by copying `TestRunContext.getStates()` once, at startup.
+- When a test fails, `StructureTestListener.onFailed` calls `TestRunContext.retry`, which adds a copy of the state to the context's own list. The `TestSet` listener's `onRetry` does nothing, so the copy never joins the `TestSet`.
+- `TestSet.isDone()` compares completed tests against the original count, and `getFailedRequiredTestCount()` counts the failed first attempt. `TestServer.tick` stops the server once the original set is done and reports failure if any required test failed.
 
-This runs the test up to 3 times, passes if any single run succeeds. CI sees one passing test in the report. Do NOT use this to paper over real bugs; reserve it for genuine race-y AI scenarios where the contract is "this *can* happen within N ticks" not "this *must* happen at tick N". Document why you're using it in the test's javadoc.
+So do not use `maxAttempts` or `requiredSuccesses`. When a test races goal selectors, navigation, or tick ordering, make it deterministic instead: pin the entity (Rule 6), freeze the world clock (Rule 3), give it its own batch, or assert a window ("within N ticks") with `runAtEveryTick` rather than one exact tick. If a test is still flaky, fix it or track it in an issue rather than masking it.
 
 ## Rule 9: One assertion theme per test, named after what fails
 
@@ -266,7 +260,7 @@ The full `@GameTest` annotation fields, decompiled from Yarn 1.21.1:
 | `required` | true | If false, failure does not fail the suite. Use this VERY sparingly |
 | `manualOnly` | false | If true, skipped in `runGametest` and only runs via in-game `/test run` |
 | `duration` | 0L | Extra setup ticks before user code runs |
-| `maxAttempts` | 1 | Retry budget; see Rule 8 |
+| `maxAttempts` | 1 | Retry budget. Ignored by `runGametest` on 1.21.1; see Rule 8 |
 | `requiredSuccesses` | 1 | Required passes within `maxAttempts` |
 
 Related annotations:
@@ -527,6 +521,6 @@ Run the same task in CI on every PR so the suite gates merges.
 - Don't cast `createMockPlayer(...)` to `ServerPlayerEntity`.
 - Don't rely on `useNightTime()`/`setTime(...)` as persistent pins.
 - Don't put behavioral logic in `tickLimit = 20` if the goal selector needs 50+ ticks to fire.
-- Don't paper over flakiness with `maxAttempts = 100`. Use it for genuine races and document why.
+- Don't use `maxAttempts` as a flake guard. `runGametest` fails on the first failed attempt; see Rule 8.
 - Don't write tests that JUnit can do; reach for `src/test/java` first.
 - Don't ship a new gametest class without adding it to `fabric.mod.json`.
