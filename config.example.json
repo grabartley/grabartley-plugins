@@ -9,7 +9,10 @@
 			"test": "./gradlew test",
 			"build": "./gradlew clean build"
 		},
-		"javaVersion": 21
+		"javaVersion": 21,
+		"blockbench": {
+			"projectsDir": "~/blockbench"
+		}
 	},
 	"repos": {
 		"your-github-login/your-repo": {

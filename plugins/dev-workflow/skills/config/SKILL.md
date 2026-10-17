@@ -55,6 +55,7 @@ FORMAT_CMD=$(jq -r --arg r "$REPO" '.repos[$r].commands.format // .defaults.comm
 | `github.devDir` | pr-local-review | Where local clones live, default `~/dev` |
 | `defaults.commands.{format,test,build}` | pr, build, run-tests | Shell commands for format, test, and full build |
 | `defaults.javaVersion` | pr, build | JDK to activate before gradle runs |
+| `defaults.blockbench.projectsDir` | minecraft-modding plugin | Where Blockbench `.bbmodel` projects live outside any repo, default `~/blockbench` |
 | `repos.<slug>.worktreePrefix` | worktree | Worktree dir prefix, defaults to the repo name |
 | `repos.<slug>.copyRunDir` | worktree | Copy `run/` into new worktrees (Fabric dev env) |
 | `repos.<slug>.board.*` | create-issue, build | Project board ids and status option ids |
