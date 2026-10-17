@@ -128,14 +128,30 @@ it moves the cube away from whatever it was flush against. **Overlap the joint b
 start a loop one unit inside the body so that a 30 degree tilt still leaves it attached instead of
 floating. `bbmodel_validate`'s floating gate catches the ones that got away.
 
-## The Pose Is Part Of The Art
+## The Pose Is Vanilla's
 
-A `builtin/entity` prop is drawn by your own renderer in all six transformation modes, so **the GUI
-angle is an art decision, not boilerplate**. At the stock three-quarter angle a small prop can be
-an unreadable lump at 32px; near side-on it can be unmistakable. Render the pose you intend to ship
-with `bbmodel_render` at `width` and `height` of 64 and again at 32, then set the same angles in
-the `GUI` case of the item renderer. If the prop only reads at 300px, it has failed: players see
-it at 16 to 64.
+A held or displayed prop must sit exactly where a vanilla block or item would: same size and
+place in the GUI slot, in first person, in third person, in an item frame and on the ground.
+Players compare it with the hundreds of vanilla blocks they hold every day, so any hand-invented
+pose reads as broken.
+
+- **The renderer only normalises.** The `DynamicItemRenderer` scales and centres the model into
+  the 0..1 block space a vanilla block occupies, and does nothing per mode. A 2-block-wide model
+  gets scaled by 0.5, and so on.
+- **The poses live in the item model JSON**, in its `display` section, copied from vanilla:
+  `block/block.json` for a block, `block/thin_block.json` for a short one, `item/handheld.json`
+  for a tool. Leave out the left-hand entries so vanilla mirrors the right hand for you.
+- **Change only the facing.** Turning the Y rotation so the front faces the player is fine. Do not
+  touch scale or translation unless vanilla itself does for that shape, such as the thin-block
+  first-person lift.
+- **Never draw a custom arm.** Vanilla hides the arm in first person while anything is held, and
+  the prop should behave the same.
+- **Prove it side by side.** Take first-person and third-person shots holding the prop and a vanilla
+  block of the same kind, and read both full frames before calling it done.
+
+Check the GUI angle too: set the `gui` rotation's Y so the prop's most readable side faces out, then
+render it with `bbmodel_render` at `width` and `height` of 64 and again at 32. If the prop only
+reads at 300px, it has failed: players see it at 16 to 64.
 
 Two renderer details worth knowing before you copy an existing one:
 
@@ -153,9 +169,11 @@ Two renderer details worth knowing before you copy an existing one:
 1. `src/client/resources/assets/<modid>/geo/<prop>.geo.json`, exported from the project.
 2. `src/client/resources/assets/<modid>/textures/item/<prop>.png`, the same PNG the project holds.
 3. A `GeoModel<T>` returning both, plus an animation path. A prop with no animation file is fine.
-4. A `DynamicItemRenderer` posing all six `ModelTransformationMode` cases.
-5. `src/main/resources/assets/<modid>/models/item/<prop>.json` as
-   `{"parent": "builtin/entity"}`. No flat sprite: the renderer draws the GUI too.
+4. A `DynamicItemRenderer` that normalises the model into the block space, the same for every
+   `ModelTransformationMode`.
+5. `src/main/resources/assets/<modid>/models/item/<prop>.json` with `"parent": "builtin/entity"`
+   and a `display` section copied from the matching vanilla model. No flat sprite: the renderer
+   draws the GUI too.
 6. `BuiltinItemRendererRegistry.INSTANCE.register(...)` in the mod's client initializer.
 7. Commit the `.texture.json` spec next to the model when one was used, so the next person edits
    text, not a PNG. The project stays in `projectsDir`.
@@ -165,7 +183,8 @@ Two renderer details worth knowing before you copy an existing one:
 - [ ] The project sits in `<projectsDir>/<prop>/` and the geo in the repo is its export
 - [ ] `bbmodel_validate` passes with no floating parts
 - [ ] The side-profile render was viewed, and the outline alone says what the prop is
-- [ ] The 32px render at the pose the GUI case actually uses was viewed, and it reads
+- [ ] The 32px render at the `gui` display pose was viewed, and it reads
+- [ ] The `display` values are vanilla's, and first- and third-person shots next to a vanilla block match it in size and place
 - [ ] Every decal lands on the face it was written for, verified in an in-game screenshot
 - [ ] Rotated cubes still touch what they attach to
 - [ ] The texture is one texel per model unit unless there is a reason it is not
