@@ -187,6 +187,7 @@ Say so and pick a simpler read rather than shipping something mushy.
 - [ ] The outline uses two tones, and neither is pure black
 - [ ] The scales strip was viewed, and the sprite reads at 1x
 - [ ] The item model JSON exists and points at the right texture id
+- [ ] The item model's parent is vanilla's `item/generated` (or `item/handheld` for a tool) with no `display` overrides
 - [ ] `scripted-qa` captured it in the hotbar, in the inventory, and held in hand
 
 ## Related Skills

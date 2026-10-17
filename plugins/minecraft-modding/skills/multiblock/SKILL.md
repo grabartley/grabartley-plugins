@@ -173,6 +173,25 @@ that is not one of those has to be a GeckoLib model drawn from a block entity, w
 above. If every angle in the shape happens to be axis-aligned or a vanilla-legal rotation, prefer
 one plain model per cell and skip this section entirely.
 
+## Every cell collides, including the top
+
+Slice the collision shape by cell on all three axes, not just X and Z. Upper cells that return an
+empty shape leave the roof walk-through, and a player who jumps on the structure falls inside it.
+Gametest it: drop an item onto the top and assert it comes to rest there.
+
+When something lives inside and is taller than the way in, it cannot walk out on its own. Give it
+an exit the way vanilla gives a bed one: when it leaves, place it on the nearest safe spot around
+the footprint, door side first, using `Dismounting.findRespawnPos` so carpet, snow and slabs are
+handled. Work out that spot from the structure it is leaving before any assignment is cleared.
+
+## The item form looks like a vanilla block
+
+The held item must sit like a vanilla block, however big the structure is. The item renderer
+scales the whole model down into the 0..1 block space and does nothing per mode. The poses go in
+the item model's `display` section, copied from vanilla's `block/block.json`, with only the facing
+turned so the front shows. `geo-prop` covers this in full. Check it with first- and third-person
+shots next to a held vanilla block.
+
 ## Prove it with the ground, not with your eye
 
 Screenshot measurement of a model against terrain is unreliable, and reasoning about a matrix you
@@ -200,6 +219,9 @@ Follow `scripted-qa` for driving the client and publishing the evidence.
 - [ ] Interactions on any cell reach the origin
 - [ ] Losing any cell by any means takes the whole structure, and it drops exactly one item
 - [ ] Hollow volumes collide as hollow; nothing that lives inside is suffocating
+- [ ] Upper cells collide too: something dropped on top rests on top
+- [ ] Anything that lives inside and is taller than the opening is placed outside when it leaves
+- [ ] The item uses vanilla's block `display` values and matches a held vanilla block in first and third person
 - [ ] Model authored centred on the footprint, facing read from the block state
 - [ ] Plan-view evidence on all four facings shows the model covering its own cells
 - [ ] Renderer declares it draws outside its bounding box
