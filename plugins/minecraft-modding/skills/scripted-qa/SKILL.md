@@ -149,6 +149,10 @@ and anything that ticks on nearby entities. Note each one, then either avoid it 
 a separate stage area) or clean up after it (`qa scene`, then tp or `qa reset` the extras). A spawn
 that brings friends shows up in `qa scene` as untagged entities of the same type.
 
+Take every registry id, NBT key and command name in a stage from the mod's source, never from
+memory or from a display name. One wrong id fails the whole batch or, in a datapack function,
+quietly stops the function loading.
+
 ### Measuring positions
 
 Close shots exaggerate perspective: an object that reaches towards the camera looks further back
@@ -516,6 +520,24 @@ restates your diff; "the totem is on the left, tipped away from the stone with a
 reads the image, and only the second one catches anything. If a shot cannot settle a question
 because of its angle, distance or occlusion, that is a reason to re-shoot, not to assume.
 
+A shot proves a claim only for the subjects in which the claim can be read. When one frame holds
+several subjects, or the feature is small, rule on each subject separately from a crop where the
+feature fills enough pixels to see. A subject whose feature cannot be made out is unproven, however
+clearly its neighbours show the change.
+
+When a change is meant to affect one region, prove both halves with a pixel diff of the same
+subject before and after the change, not by eye:
+
+- **Inside the region, it changed.** A before and after pair that looks the same is a failed check,
+  not a pass.
+- **Outside the region, nothing changed.** Any differing pixel outside the intended region is a
+  defect until explained, even when that state also existed before the change. A parity check
+  against the base branch proves only that the new state matches the old one, not that the old
+  one was right.
+
+Hold everything else still for the pair (pose, animation time, camera, lighting), or the diff
+measures the noise instead of the change.
+
 ## The Dev World Is Mutable State, And A Dead Player Poisons It
 
 This section is about the **singleplayer** dev save. Multiplayer runs generate their own world in
@@ -678,6 +700,8 @@ files in its `pr-<number>/` directory in a new commit, which only ever affects t
 - [ ] Server-side interactions actually took effect; a `PASS` result with nothing consumed means
       checking `player.isRemoved()` before suspecting the feature
 - [ ] Every screenshot visually verified by reading the PNG, at multiple GUI scales for rendering
+- [ ] Every claim ruled per subject from a crop where it is legible, and every change meant for one
+      region proven by a before and after diff: changed inside it, unchanged outside it
 - [ ] Server-side state assertions logged and correct (e.g. command/DataTracker values after a click)
 - [ ] Multiplayer only: the seeded server state differed from client defaults in every field, so
       the join-time evidence distinguishes "synced" from "never contacted"
