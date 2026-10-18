@@ -10,6 +10,11 @@ package com.example.mymod.qa;
 // - Chat lines of the form "qa: var name=value" (sent by the temporary /qa commands) store a
 //   variable; later commands use it as $name. An unresolved $name is an error.
 // - Any ERROR drops the rest of the queue so later steps never run against the wrong state.
+// - `cam <tag> ...` looks the tag up at that moment and views through a client-side camera entity,
+//   so the player never moves and nothing in the mod can react to the camera.
+// - `sshot` runs `qa check` after the settle and refuses to save if a staged subject drifted.
+// - With nothing queued for IDLE_QUIT_TICKS the client quits itself, so a session that ends or is
+//   interrupted never leaves a game running on the developer's machine.
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -43,6 +48,8 @@ import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
 import net.minecraft.client.util.ScreenshotRecorder;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.decoration.ArmorStandEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.screen.slot.Slot;
@@ -60,8 +67,9 @@ public final class LiveQaDriver {
 
   private static final Pattern VAR = Pattern.compile("qa: var (\\w+)=(\\S+)");
   private static final Pattern COMMAND_ERROR =
-      Pattern.compile("^(Unknown or incomplete command|An unexpected error occurred|Incorrect argument|Expected )");
+      Pattern.compile("^(Unknown or incomplete command|An unexpected error occurred|Incorrect argument|Expected |qa: FAIL)");
   private static final Pattern REF = Pattern.compile("\\$(\\w+)");
+  private static final int IDLE_QUIT_TICKS = 20 * 60 * 3;
 
   private static Path inbox;
   private static Path outbox;
@@ -74,6 +82,9 @@ public final class LiveQaDriver {
   private static CompletableFuture<?> pending;
   private static int forcedSlot = -1;
   private static boolean started;
+  private static int idleTicks;
+  private static ArmorStandEntity camera;
+  private static volatile String checkReply;
 
   private LiveQaDriver() {}
 
@@ -86,6 +97,9 @@ public final class LiveQaDriver {
           final Matcher m = VAR.matcher(text);
           if (m.find()) {
             VARS.put(m.group(1), m.group(2));
+          }
+          if (text.startsWith("qa: check ")) {
+            checkReply = text;
           }
           if (COMMAND_ERROR.matcher(text).find()) {
             fail("server rejected a command: " + text);
@@ -109,6 +123,16 @@ public final class LiveQaDriver {
         client.setScreen(null);
       }
       readInbox();
+      if (QUEUE.isEmpty() && until == null && pending == null && waitTicks == 0) {
+        if (++idleTicks >= IDLE_QUIT_TICKS) {
+          log("IDLE quit after " + IDLE_QUIT_TICKS / 20 + "s with nothing queued");
+          idleTicks = Integer.MIN_VALUE;
+          client.scheduleStop();
+          return;
+        }
+      } else {
+        idleTicks = 0;
+      }
       if (QUEUE.remove("abort")) {
         QUEUE.clear();
         until = null;
@@ -131,11 +155,11 @@ public final class LiveQaDriver {
         }
         final boolean ok = until.getAsBoolean();
         until = null;
-        if (ok) {
-          log("until ok");
-        } else {
+        if (!ok) {
           fail("until timed out");
+          return;
         }
+        log("until ok");
       }
       final String line = QUEUE.poll();
       if (line != null) {
@@ -247,15 +271,29 @@ public final class LiveQaDriver {
         awaitUntil(() -> reload.isDone() && client.getOverlay() == null, 1200);
         waitTicks = 10;
       }
-      case "cam" -> cam(client, a);
+      case "cam" -> {
+        VARS.remove(a[1]);
+        QUEUE.addFirst("_cam " + rest);
+        QUEUE.addFirst("cmd qa find " + a[1]);
+      }
+      case "_cam" -> cam(client, a);
+      case "camoff" -> {
+        client.setCameraEntity(client.player);
+        camera = null;
+      }
+      case "fov" -> client.options.getFov().setValue(Integer.parseInt(a[1]));
       case "look" -> {
         client.player.setYaw(Float.parseFloat(a[1]));
         client.player.setPitch(Float.parseFloat(a[2]));
       }
       case "sshot" -> {
         QUEUE.addFirst("_save " + a[1]);
+        QUEUE.addFirst("_checked");
+        QUEUE.addFirst("cmd qa check");
+        checkReply = null;
         waitTicks = a.length > 2 ? Integer.parseInt(a[2]) : 6;
       }
+      case "_checked" -> awaitUntil(() -> checkReply != null, 100);
       case "_save" -> {
         final String name = "qa_" + client.getSession().getUsername() + "_" + a[1] + ".png";
         ScreenshotRecorder.saveScreenshot(client.runDirectory, name, client.getFramebuffer(), t -> {});
@@ -345,9 +383,10 @@ public final class LiveQaDriver {
   }
 
   private static void cam(final MinecraftClient client, final String[] a) {
-    final Entity entity = client.world.getEntityById(Integer.parseInt(a[1]));
+    final String id = VARS.get(a[1]);
+    final Entity entity = id == null ? null : client.world.getEntityById(Integer.parseInt(id));
     if (entity == null) {
-      throw new IllegalStateException("entity " + a[1] + " is not loaded on this client");
+      throw new IllegalStateException("tag " + a[1] + " is not loaded on this client");
     }
     final float angle = Float.parseFloat(a[2]);
     final double dist = Double.parseDouble(a[3]);
@@ -370,10 +409,18 @@ public final class LiveQaDriver {
     final float yaw = (float) (MathHelper.atan2(d.z, d.x) * MathHelper.DEGREES_PER_RADIAN) - 90.0f;
     final float pitch =
         (float) -(MathHelper.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)) * MathHelper.DEGREES_PER_RADIAN);
-    final double feet = eye.y - client.player.getStandingEyeHeight();
-    command(
-        client,
-        String.format(Locale.ROOT, "tp @s %.3f %.3f %.3f %.2f %.2f", eye.x, feet, eye.z, yaw, pitch));
+    if (camera == null || camera.getWorld() != client.world) {
+      camera = new ArmorStandEntity(EntityType.ARMOR_STAND, client.world);
+      camera.setInvisible(true);
+    }
+    camera.refreshPositionAndAngles(eye.x, eye.y - camera.getStandingEyeHeight(), eye.z, yaw, pitch);
+    camera.resetPosition();
+    camera.prevYaw = yaw;
+    camera.prevPitch = pitch;
+    camera.setHeadYaw(yaw);
+    client.setCameraEntity(camera);
+    log(String.format(Locale.ROOT, "cam %s eye=%.2f,%.2f,%.2f yaw=%.1f pitch=%.1f",
+        a[1], eye.x, eye.y, eye.z, yaw, pitch));
   }
 
   private static void openInventory(final MinecraftClient client) {
