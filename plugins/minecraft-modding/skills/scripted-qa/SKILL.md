@@ -53,10 +53,10 @@ It has two temporary pieces and four helper scripts:
 | File | Where it goes | What it does |
 |---|---|---|
 | `templates/LiveQaDriver.java` | `src/client/java/<pkg>/qa/`, registered from `onInitializeClient()` | reads `<runDir>/qa-in.txt`, runs one command per step, logs to `<runDir>/qa-out.txt` |
-| `templates/QaCommands.java` | `src/main/java/<pkg>/qa/`, registered from `onInitialize()` | a temporary `/qa` command tree that stages scenes: spawn by tag, AI on or off, sit, hurt, probe state, list hostile mobs and their targets, list players, clear |
+| `templates/QaCommands.java` | `src/main/java/<pkg>/qa/`, registered from `onInitialize()` | a temporary `/qa` command tree that stages and guards scenes: neutral spawn by tag, scene check, scene dump, reset, quiet game rules, AI on or off, sit, hurt, probe state, list hostile mobs and their targets, list players |
 | `scripts/qa.sh` | run from the shell | appends commands, waits until they have all run, prints what the driver logged |
 | `scripts/orbit.sh` | run from the shell | prints front, three-quarter, left and right shots of one entity |
-| `scripts/sheet.py`, `scripts/contrast.py` | run from the shell | contact sheets and centre zooms for reading many shots at once; contrast ratio between two pixels |
+| `scripts/sheet.py`, `scripts/contrast.py` | run from the shell | contact sheets and centre zooms for reading many shots at once (Pillow, or ffmpeg when Pillow is missing); contrast ratio between two pixels |
 
 Because staging goes through real brigadier commands, the same tree serves singleplayer (the
 driver runs the command on the integrated server at op level 4) and multiplayer (an op player
@@ -71,39 +71,98 @@ make the clients op through the server's `ops.json`; offline-mode UUIDs are the 
 - Session: `until title|world|overlay`, `world <save>`, `connect <host:port>`, `leave`, `wait <ticks>`,
   `mark <text>`, `quit`, `abort`.
 - Staging: `cmd <command>` runs any server command as this player.
-- Camera: `cam <entityId> <angle> <dist> <up> [focusUp|-] [focusFwd]` teleports the player so its eye
-  looks at a point on the entity. `angle` is measured from the entity's body yaw, so `0` is the
-  front, `90` its left side, `-90` its right. `look <yaw> <pitch>`, `hud on|off`, `gui <scale>`.
-- Evidence: `sshot <name> [settleTicks]` saves `qa_<username>_<name>.png` after a settle.
+- Camera: `cam <tag> <angle> <dist> <up> [focusUp|-] [focusFwd]` looks the tag up at that moment
+  and views through a client-side camera entity aimed at a point on the subject. The player never
+  moves. `angle` is measured from the subject's body yaw, so `0` is the front, `90` its left side,
+  `-90` its right. `camoff` returns the view to the player. `fov <degrees>` (30 to 110),
+  `look <yaw> <pitch>`, `hud on|off`, `gui <scale>`.
+- Evidence: `sshot <name> [settleTicks]` settles, runs `/qa check`, and saves
+  `qa_<username>_<name>.png` only if every staged subject is still where it was staged.
 - Screens: `inv`, `hover <slotId>` (forced mouse, so tooltips render unfocused), `useblock x y z`,
   `slotclick <slotId> [button] [action]`, `slots`, `widgets`, `clickw <index>`, `clicka x y`,
   `type <text>`, `close`, `hotbar <n>`, `lang <code>`.
 - Reading back: `state`, and `recipes <namespace>`, which lists each recipe and whether this
   player's recipe book has it unlocked.
 
-`/qa` replies of the form `qa: var <tag>=<entityId>` set `$<tag>` in the driver, so a staging
-command and the shots that follow can be written in one batch:
+`/qa` replies of the form `qa: var <tag>=<entityId>` set `$<tag>` in the driver, but prefer tags
+over ids: `cam` resolves its tag itself, so shots keep working after a subject is re-staged. A
+staging command and the shots that follow can be written in one batch:
 
 ```bash
 bash scripts/qa.sh run <<'EOF'
 cmd gamemode spectator
+cmd qa quiet
 cmd qa spawn pet1 <modid>:<entity> 20.5 65 0.5 0
+cmd qa scene 16
 hud off
 EOF
 bash scripts/orbit.sh pet1 look_pet1 1.6 0.1 - 0.3 | bash scripts/qa.sh run
 ```
 
-The driver is strict on purpose. An `ERROR` (an exception, a command the server rejected, an
-unresolved `$name`, an `until` that timed out) drops the rest of the queue, and `qa.sh` returns as
-soon as it sees one. A batch never carries on staging the wrong scene. Send `quit` with a plain
-append rather than through `qa.sh`, since the client exits before it can log the end marker.
+The driver is strict on purpose. An `ERROR` (an exception, a command the server rejected, a
+`qa: FAIL` reply, an unresolved `$name`, an `until` that timed out) drops the rest of the queue,
+and `qa.sh` returns as soon as it sees one. A batch never carries on staging the wrong scene.
+
+**Never leave the game running.** The client is a heavy process on the developer's machine, and
+one left behind has to be killed by hand. Stop it with `bash scripts/qa.sh <runDir> stop` before
+ending every turn, before relaunching, and before handing back to the user, and confirm it prints
+`client stopped` or `client killed`. `stop` only touches the client launched from that run
+directory, so other sessions' games and servers are safe; never use a broad `pkill`. As a backstop,
+the driver quits the client on its own after three minutes with nothing queued.
+
+### Scene guards
+
+The harness assumes the mod under test will react to anything it can. So the defaults give it
+nothing to react to, and every shot checks that the scene is still the one that was staged.
+
+- **Neutral subjects.** `qa spawn <tag> <type> x y z yaw [flags]` makes the subject persistent,
+  untamed, AI-off, silent, invulnerable and gravity-free. Flags opt into behaviour one at a time:
+  `tame` (owned by the staging player), `sit`, `ai`, `gravity`, `sound`, `vulnerable`. Owned or
+  active mobs set off follow, teleport-to-owner, pack and despawn logic you did not ask for.
+- **One tag, one entity.** `spawn` refuses a tag already in use, and every lookup fails unless the
+  tag matches exactly one loaded entity. Use fresh tags for each staging.
+- **Every shot is checked.** `spawn` records the staged position and body yaw. `/qa check` fails if
+  any staged subject is gone, duplicated, moved more than 0.05 blocks or turned more than 3
+  degrees, and `sshot` runs it after the settle. A scene that is meant to move (a recall, a
+  knockback) calls `qa restage <tag>` once it has settled, or `qa unstage <tag>` to stop guarding
+  that subject.
+- **The camera does not touch the game.** `cam` never teleports the player, so mods that react to
+  player movement leave the scene alone. Park the player near the stage, out of frame and within
+  view distance, because the server only loads chunks around the player.
+- **Quiet world.** Run `qa quiet` once per session. It turns off mob, patrol, trader, warden and
+  phantom spawning, the day and weather cycles, fire spread and mob griefing, and pins noon.
+- **Look before blaming the feature.** `qa scene [radius]` lists every entity near the player with
+  its tags, position, yaw, AI, persistence and owner. Run it straight after staging, and again
+  whenever a check fails. `qa reset <radius>` discards everything nearby without killing it, so no
+  drops, death animations or grave blocks land in later shots, and it clears the staged list.
+
+**Stop rule.** Two staging errors or failed checks in a row mean the harness or the scene is wrong,
+not the framing. Run `qa scene`, find what moved or appeared and why, and fix that cause before
+sending another batch. Do not retry with new tags, positions or teleports.
+
+### Before staging: what will the mod do?
+
+Spend a minute reading the mod for anything that acts on staged entities before writing the stage.
+Search the source for hooks on player teleport and respawn (pets brought along), entity spawn
+(packs, groups, variant swaps, replacement entities), despawn rules, owner follow and sit logic,
+and anything that ticks on nearby entities. Note each one, then either avoid it (a neutral spawn,
+a separate stage area) or clean up after it (`qa scene`, then tp or `qa reset` the extras). A spawn
+that brings friends shows up in `qa scene` as untagged entities of the same type.
+
+### Measuring positions
+
+Close shots exaggerate perspective: an object that reaches towards the camera looks further back
+or forward than it is. When the question is where something sits (an attachment point, a gap, an
+overlap), shoot axis-aligned views (side `90`, front `0`, top with a large `up`) from further away
+with a narrow field of view, for example `fov 30` at three to four times the usual distance. Keep
+close and three-quarter shots for judging how it looks.
 
 ### Running a checklist
 
 1. Launch once, wait for `[QA] READY` in the client log, then send `until title` and `world <save>`
    (or `connect`). Keep the game up until the whole checklist is done.
-2. Per item: stage with `cmd`, assert with `/qa probe`, `/qa mobs` or `/qa players`, photograph with
-   `cam` and `sshot`. Prefer asserting state over reading pixels for behaviour; keep pixels for how
+2. Per item: stage with `cmd`, confirm the stage with `/qa scene`, assert with `/qa probe`,
+   `/qa mobs` or `/qa players`, photograph with `cam` and `sshot`. Prefer asserting state over reading pixels for behaviour; keep pixels for how
    things look.
 3. Pair every behaviour check with a **control**: the same scene without the item, effect or upgrade
    under test, side by side or straight after. "The warded mob ignored the player" means nothing
@@ -114,20 +173,21 @@ append rather than through `qa.sh`, since the client exits before it can log the
    with `contrast.py` rather than eyeballing it.
 5. Time each phase (compile, launch, world load, each batch, reading) from the log and `qa.sh`'s
    `[took Ns]` lines, so slow steps are visible.
-6. Revert both registration lines and delete the `qa/` packages when done.
+6. Stop the client with `qa.sh <runDir> stop`, then revert both registration lines and delete the
+   `qa/` packages when done.
 
 ### What the live session taught
 
-- **Owned entities may be pulled to their owner.** A mod that brings pets along on a long teleport
-  moves every spawned pet to the camera the moment `cam` teleports the player, and the next shot is
-  taken from inside a pet. Spawn owned entities sitting or on a stay command before moving the
-  camera. The template's `spawn` sits tameable entities for this reason.
+- **Owned entities may be pulled to their owner.** A mod that brings pets along on a teleport moves
+  every owned subject the moment the player teleports. The neutral spawn and the camera entity
+  avoid both halves of that. If a check needs `tame`, add `sit` too and teleport nothing.
 - **AI-disabled mobs never run goals or `move()`.** Poses driven by a goal (sitting, begging) never
   apply, and block collisions never happen, so a mob stands in fire unharmed whether or not the
   feature works. Turn AI back on for those checks, with the entity sitting or anchored so it stays
   in frame.
 - **Tag lookups only see loaded entities.** After a rejoin or a long move, `/qa find` fails for
-  anything in an unloaded chunk. Move a player near it first.
+  anything in an unloaded chunk. Move a player near it first, or stage within view distance of
+  where the player is parked.
 - **The hitbox is not the model.** Renderers often scale per variant, so one camera distance and
   focus height frames every variant differently. Tune `cam` per variant and confirm with a
   wide shot before the close-ups.
@@ -627,6 +687,7 @@ files in its `pr-<number>/` directory in a new commit, which only ever affects t
       or left untracked; nothing QA-only committed
 - [ ] Live session only: every behaviour check had a control, and every batch ended on its marker
       rather than on an `ERROR` or a timeout
+- [ ] No game client left running: `qa.sh <runDir> stop` printed `client stopped` or `client killed`
 - [ ] Temp driver + initializer hook reverted; `git status` shows only intended files
 - [ ] Evidence pushed to the `<imagesBranch>` branch under `pr-<number>/` and embedded in the PR
       body; nothing image-related committed to the PR branch

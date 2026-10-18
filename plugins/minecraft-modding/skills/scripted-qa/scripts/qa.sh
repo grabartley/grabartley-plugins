@@ -3,7 +3,31 @@
 # usage: qa.sh <runDir> [timeoutSeconds] < commands
 # Prints the new outbox lines (minus the echoed commands) and the elapsed time.
 # Stops early on the driver's first ERROR, since the driver drops the rest of the queue.
-RUN=$1; T=${2:-180}
+#        qa.sh <runDir> stop
+# asks the client launched from <runDir> to quit, waits for it to exit, and kills it after 60
+# seconds. It only touches the java process whose working directory is <runDir>.
+RUN=$(cd "$1" && pwd -P)
+
+client_pids() {
+  for pid in $(pgrep -f 'net.fabricmc.devlaunchinjector.Main|KnotClient'); do
+    cwd=$(lsof -a -d cwd -p "$pid" -Fn 2>/dev/null | sed -n 's/^n//p')
+    [ "$cwd" = "$RUN" ] && echo "$pid"
+  done
+}
+
+if [ "$2" = stop ]; then
+  echo quit >> "$RUN/qa-in.txt"
+  for _ in $(seq 60); do
+    [ -z "$(client_pids)" ] && { echo "client stopped"; exit 0; }
+    sleep 1
+  done
+  pids=$(client_pids); [ -n "$pids" ] && kill $pids; sleep 3
+  pids=$(client_pids); [ -n "$pids" ] && kill -9 $pids; sleep 1
+  [ -z "$(client_pids)" ] && { echo "client killed"; exit 0; }
+  echo "client still running: $(client_pids)"; exit 1
+fi
+
+T=${2:-180}
 id="done-$RANDOM$RANDOM"
 start=$(wc -l < "$RUN/qa-out.txt")
 { cat; echo "mark $id"; } >> "$RUN/qa-in.txt"
