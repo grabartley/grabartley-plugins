@@ -42,7 +42,7 @@ Read per the `config` skill:
 	- Attach screenshots whenever the change has a visible surface (UI, screen layout, in-game rendering, overlay, config panel). Capture the relevant state where the change is visible and either drag the file into the GitHub PR description after creation or upload it through the GitHub web UI; reference the resulting `user-attachments` URL in the body next to the paragraph it illustrates. Skip screenshots only when the change has no rendered output.
 	- Wrap class names, commands, and identifiers in backticks inside the markdown file, not inline shell args.
 	- Always include a closing reference like `Closes #<issue-number>` so the PR Development section is linked to the issue being worked on.
-9. After merge, clean up: `git worktree remove ./.claude/worktrees/<prefix>-<branch-name>`
+9. Once the PR is merged, always delete the worktree and its local branch: `git worktree remove ./.claude/worktrees/<prefix>-<branch-name>`, then `git branch -D <branch-name>`. Use `--force` on the remove only when `git status` in the worktree shows no tracked changes and the leftovers are untracked copies such as a dev `run/` directory.
 
 ## Conventions
 
@@ -67,4 +67,4 @@ Read per the `config` skill:
 
 - When invoked from build, create the PR as a draft. Build's review gate runs `pr-local-review` in an Opus subagent, addresses the findings, runs automated QA, and only then marks the PR ready with `gh pr ready`.
 - If invoked after build work, confirm the linked issue is in `QA testing` before final handoff.
-- Do not move issue to `Done`, that is reserved for human QA completion.
+- Once the PR is merged, move the linked issue to `Done`. The merge is the QA sign-off.
