@@ -34,7 +34,7 @@ Read per the `config` skill. `<slug>` is the current repo:
 13. Move the issue to `QA testing` only after the PR is marked ready for review and the `ciGreenBeforeQa` condition is met. If CI fails, keep the issue in `In progress`, fix the failures on the same branch, and re-validate before transitioning.
 14. After the PR is ready and the `QA testing` transition lands, always provide a detailed manual QA checklist to the developer. The checklist covers what automated validation could not; items already verified automatically are listed as pre-verified with a pointer to the evidence.
 15. If PR code changes after the PR is opened, check whether the PR description still matches the current branch state, and update it if needed so it reflects the final state only.
-16. Stop at `QA testing`, a human performs final verification and moves to `Done`.
+16. Leave the issue in `QA testing` until the PR is merged. The merge is the QA sign-off: once it lands, verify the assignment, move the issue to `Done`, and delete the worktree and its local branch. Never leave either step to the developer.
 17. Every code change must also update any docs it invalidates. Audit `README.md`, in-repo docs, and the linked issue body before committing; ship doc edits in the same PR as the code change.
 18. If QA finds issues after handoff, re-enter the build flow for the same issue: move it back to `In progress`, continue on the existing branch and PR, and pass back through the review gate before marking it ready again. Do not open a new issue for the same scope.
 19. No pull request becomes ready for review while the branch still carries comments it introduced. The review gate strips them, and the `strip-comments` skill's verification is what proves only comments went.
@@ -57,6 +57,7 @@ Read per the `config` skill. `<slug>` is the current repo:
 12. Wait on CI per the `ciGreenBeforeQa` setting and report status.
 13. Verify the assignment, then move the issue to `QA testing` when CI is satisfied and the PR is ready for human verification.
 14. Provide a detailed manual QA checklist that the developer can run step by step.
+15. Once the PR is merged, verify the assignment, move the issue to `Done`, and delete the worktree and its local branch.
 
 ## Review Gate
 
@@ -78,13 +79,13 @@ Runs between opening the draft PR and marking it ready for review. Every step, i
 	- `Ready`: scoped and ready to start
 	- `In progress`: active implementation
 	- `QA testing`: implementation complete, awaiting human validation
-	- `Done`: human-only final move after QA signoff
+	- `Done`: the PR is merged, which is the QA sign-off
 
 - Required transitions for build flow:
 	- Start work: assign the issue to the developer running build, then set to `In progress`
 	- After the PR is ready for review and QA handoff: set to `QA testing`
 	- Re-entry after QA finds issues: set back to `In progress`
-	- Do not move to `Done` inside this skill
+	- After the PR is merged: set to `Done`, then delete the worktree and its local branch
 
 - Every transition above is gated on the assignment check in Critical Rule 5. Read the issue's assignees, confirm the developer running build is among them, and only then write the status field.
 

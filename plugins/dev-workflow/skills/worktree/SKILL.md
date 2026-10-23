@@ -25,5 +25,6 @@ Read per the `config` skill:
 
 - Always branch from latest `main`.
 - Use a fresh worktree per branch, do not reuse active worktrees.
+- Always delete the worktree and its local branch once its PR is merged.
 - Worktree path format: `./.claude/worktrees/<prefix>-<branch-name>`.
 - Keep branch names concise and kebab-case.
