@@ -1,6 +1,10 @@
 package com.example.mymod.qa;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
+import net.minecraft.client.network.ServerAddress;
+import net.minecraft.client.network.ServerInfo;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
@@ -11,6 +15,33 @@ import net.minecraft.util.math.Vec3d;
 
 public final class QaTasks {
   private QaTasks() {}
+
+  public static QaTask connect(String address) {
+    return new QaTask() {
+      private boolean sent;
+      private int ticks;
+
+      @Override
+      public boolean tick(MinecraftClient client) {
+        if (client.player != null && client.world != null) {
+          QaLog.say("connected to " + address);
+          return true;
+        }
+        if (!sent && client.currentScreen instanceof TitleScreen && ticks > 40) {
+          sent = true;
+          ConnectScreen.connect(
+              new TitleScreen(),
+              client,
+              ServerAddress.parse(address),
+              new ServerInfo("qa", address, ServerInfo.ServerType.OTHER),
+              false,
+              null);
+        }
+        ticks++;
+        return false;
+      }
+    };
+  }
 
   public static QaTask look(double yaw, double pitch) {
     return new QaTask() {
@@ -154,13 +185,20 @@ public final class QaTasks {
     };
   }
 
+  // Aim at the block's real shape, not its cell: an open door is a thin panel at the cell's edge.
+  public static Vec3d aimPoint(MinecraftClient client, BlockPos pos) {
+    final var shape = client.world.getBlockState(pos).getOutlineShape(client.world, pos);
+    return shape.isEmpty() ? Vec3d.ofCenter(pos) : shape.getBoundingBox().offset(pos).getCenter();
+  }
+
   public static QaTask useBlock(BlockPos pos, boolean sneaking) {
     return new QaTask() {
       private int ticks;
+      private int sneakTicks;
 
       @Override
       public boolean tick(MinecraftClient client) {
-        final Vec3d target = Vec3d.ofCenter(pos);
+        final Vec3d target = aimPoint(client, pos);
         final double yaw = QaInput.yawTo(client, target);
         final double pitch = QaInput.pitchTo(client, target);
         QaInput.lookStep(client, yaw, pitch, 0.5);
@@ -175,8 +213,9 @@ public final class QaTasks {
                   + describeCrosshair(client));
           return true;
         }
-        if (sneaking) {
+        if (sneaking && sneakTicks++ < 3) {
           QaInput.hold(client.options.sneakKey, true);
+          return false;
         }
         QaInput.tap(client.options.useKey);
         QaLog.say("using " + pos.toShortString() + " " + client.world.getBlockState(pos));

@@ -4,7 +4,7 @@ package com.example.mymod.qa;
 // Register with `QaDriver.register();` at the end of onInitializeClient(), and revert after.
 // The agent appends commands to run/qa-in.txt and reads run/qa-out.txt; the game stays up.
 
-import com.example.mymod.mixin.client.HandledScreenAccessor;
+import com.example.mymod.mixin.client.QaHandledScreenAccessor;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -64,10 +64,12 @@ public final class QaDriver {
     if (!up) {
       inbox = client.runDirectory.toPath().resolve("qa-in.txt");
       QaLog.to(client.runDirectory.toPath().resolve("qa-out.txt"));
-      QaLog.say("driver up, reading " + inbox);
+      QaLog.say("driver up as " + client.getSession().getUsername() + ", reading " + inbox);
+      QaSounds.register(client);
       up = true;
     }
     client.getToastManager().clear();
+    client.options.pauseOnLostFocus = false;
     if (poll-- <= 0) {
       poll = POLL_TICKS;
       read();
@@ -107,10 +109,16 @@ public final class QaDriver {
     }
     dead = false;
     if (task != null) {
-      if (task.tick(client)) {
-        task.finish(client);
+      try {
+        if (task.tick(client)) {
+          task.finish(client);
+          task = null;
+          wait = 3;
+        }
+      } catch (Throwable failure) {
+        QaLog.say("ERROR in task: " + failure);
         task = null;
-        wait = 3;
+        QaInput.releaseAll(client);
       }
       return;
     }
@@ -173,6 +181,16 @@ public final class QaDriver {
         client.scheduleStop();
       }
       case "mark" -> QaLog.say("MARK " + rest);
+      case "connect" -> task = QaTasks.connect(words[0]);
+      case "leave" -> {
+        client.world.disconnect();
+        client.disconnect();
+        client.setScreen(new net.minecraft.client.gui.screen.TitleScreen());
+        QaLog.say("left the server");
+      }
+      case "cmd" -> client.player.networkHandler.sendChatCommand(rest);
+      case "chat" -> client.player.networkHandler.sendChatMessage(rest);
+      case "sounds" -> QaSounds.filter(rest);
       case "sshot" -> {
         pendingShot = words[0];
         pendingShotTicks = 6;
@@ -205,7 +223,7 @@ public final class QaDriver {
           Double.parseDouble(words[0]) / 0.15, Double.parseDouble(words[1]) / 0.15);
       case "lookat" -> task = QaTasks.look(Double.parseDouble(words[0]),
           Double.parseDouble(words[1]));
-      case "face" -> task = QaTasks.face(Vec3d.ofCenter(pos(words)), "block " + rest);
+      case "face" -> task = QaTasks.face(QaTasks.aimPoint(client, pos(words)), "block " + rest);
       case "facee" -> {
         final Entity entity = QaInput.nearestEntity(client, words[0],
             words.length > 1 ? Double.parseDouble(words[1]) : 24.0);
@@ -274,6 +292,11 @@ public final class QaDriver {
         cursorTries = 0;
       }
       case "key" -> key(client, words[0]);
+      case "keyup" -> {
+        if (client.currentScreen != null) {
+          client.currentScreen.keyReleased(keyCode(words[0]), 0, modifierMask());
+        }
+      }
       case "type" -> type(client, rest);
       case "mod" -> modifier(words[0], words[1]);
       case "slotclick" -> slotClick(client, Integer.parseInt(words[0]),
@@ -322,10 +345,6 @@ public final class QaDriver {
       case "threats" -> QaReport.threats(client,
           words.length > 0 ? Double.parseDouble(words[0]) : 24.0);
       case "screen" -> QaReport.screen(client);
-      case "listing" -> QaReport.listing();
-      case "settings" -> QaReport.settings();
-      case "tags" -> QaReport.tags();
-      case "notice" -> QaReport.notice();
       case "inv" -> QaReport.inventory(client);
       case "slots" -> QaReport.slots(client);
       case "world" -> QaReport.world(client);
@@ -492,14 +511,12 @@ public final class QaDriver {
     QaLog.say("shot " + name + ".png");
   }
 
-  // Window-relative clicks need the panel origin. Either reuse the mod's own HandledScreen
-  // accessor mixin, or add a temporary one: @Accessor("x") and @Accessor("y") on HandledScreen.
   private static int panelX(HandledScreen<?> screen) {
-    return ((HandledScreenAccessor) screen).qa$panelX();
+    return ((QaHandledScreenAccessor) screen).qa$panelX();
   }
 
   private static int panelY(HandledScreen<?> screen) {
-    return ((HandledScreenAccessor) screen).qa$panelY();
+    return ((QaHandledScreenAccessor) screen).qa$panelY();
   }
 
   private static BlockPos pos(String[] words) {
