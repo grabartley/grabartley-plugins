@@ -19,11 +19,12 @@ Read per the `config` skill:
 2. Pick a short kebab-case branch name, for example `add-voice-cache`.
 3. Create worktree: `git worktree add -b <branch-name> ./.claude/worktrees/<prefix>-<branch-name> origin/main`.
 4. If `copyRunDir` is true, copy the dev `run/` directory into the worktree: `cp -a run/ ./.claude/worktrees/<prefix>-<branch-name>/run/`.
-5. Perform all coding, validation, commit, and PR steps from inside `./.claude/worktrees/<prefix>-<branch-name>`.
+5. Prove the worktree is on latest main: `git -C ./.claude/worktrees/<prefix>-<branch-name> rev-list --count HEAD..origin/main` must print `0`.
+6. Perform all coding, validation, commit, and PR steps from inside `./.claude/worktrees/<prefix>-<branch-name>`.
 
 ## Conventions
 
-- Always branch from latest `main`.
+- Always create a worktree from `origin/main` straight after a fetch. Never create one from `HEAD` or local `main`, which can be behind the remote. This holds for every worktree, including a throwaway one for QA or a playtest, so nothing gets tested on old code.
 - Use a fresh worktree per branch, do not reuse active worktrees.
 - Always delete the worktree and its local branch once its PR is merged.
 - Worktree path format: `./.claude/worktrees/<prefix>-<branch-name>`.
