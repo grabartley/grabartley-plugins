@@ -28,6 +28,18 @@ and never commit it. See **The Source Text Is Scratch** below for why this is a 
 
 Blockbench stays the right tool for models and their UV textures.
 
+## Vanilla Materials Use Vanilla Textures
+
+This rule has no exceptions, and it applies to every texture in every mod. Where a modded item or
+block shows a vanilla material, such as wood, stone, brick, wool, glass, or a metal block, it draws
+vanilla's own texture file by reference, so a resource pack reaches it. Never copy a vanilla
+texture into the mod, and never repaint or recolour one.
+
+- In a block or item model, name the file: `"minecraft:block/oak_planks"`.
+- `minecraft:item/generated` draws every layer across the full square, so an item shaped from a
+  material uses a model with `elements` that name the vanilla texture, not a painted sprite.
+- Only paint what has no vanilla equal, such as a custom emblem or a mechanism.
+
 ## Workflow
 
 1. **Copy the template source into scratch.** `templates/treat.sprite.txt` is the worked example
@@ -181,6 +193,7 @@ Say so and pick a simpler read rather than shipping something mushy.
 
 ## Checklist Before Handing Off
 
+- [ ] Every vanilla material is drawn from vanilla's own texture file, with no copy or repaint
 - [ ] No `.sprite.txt` is staged, and no `art/` or sprite-source directory was created
 - [ ] The PNG is RGBA with a transparent background, at the canvas size the source declares
 - [ ] Lighting is top-left and consistent across every part of the shape

@@ -96,6 +96,16 @@ colour per face and a dot at each patch's top-left, load it in the project, `bbm
 it, then confirm once in game with `scripted-qa`. `templates/geoprop.py facecheck` writes such a
 sheet and `geoprop.py uvmap` labels every patch over a texture; both need `numpy` and `Pillow`.
 
+## Vanilla Materials Use Vanilla Textures
+
+Where a prop shows a vanilla material, such as wood, stone, brick, wool, glass, or a metal block,
+it draws vanilla's own texture file by reference, so a resource pack reaches it. This has no
+exceptions. Never copy that texture into a sheet, and never repaint or recolour it.
+
+A box-UV sheet is one file and cannot name a vanilla texture. Put those parts in a plain block
+model, or in a separate render layer that binds the vanilla texture. Only what has no vanilla equal
+goes on the sheet. See `item-sprite` for the rule as it applies to models and flat items.
+
 ## Painting The Texture
 
 A texture that is more than a flat sprite belongs with its project. Paint it, put it back into the
@@ -181,6 +191,7 @@ Two renderer details worth knowing before you copy an existing one:
 ## Checklist Before Handing Off
 
 - [ ] The project sits in `<projectsDir>/<prop>/` and the geo in the repo is its export
+- [ ] Every vanilla material is drawn from vanilla's own texture file, with no copy or repaint
 - [ ] `bbmodel_validate` passes with no floating parts
 - [ ] The side-profile render was viewed, and the outline alone says what the prop is
 - [ ] The 32px render at the `gui` display pose was viewed, and it reads
