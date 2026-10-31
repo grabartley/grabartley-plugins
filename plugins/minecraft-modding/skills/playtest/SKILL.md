@@ -62,10 +62,12 @@ Copy the templates in this skill's `templates/` directory:
 | `QaInput.java` | keybinding held/tapped state, yaw and pitch maths, nearest entity |
 | `QaReport.java` | everything the agent reads back: screen, slots, inventory, world, entities, threats, block scans |
 | `QaModifiers.java` + `QaModifiersMixin.java` | held shift, control and alt, injected where the game actually reads them |
+| `QaHandledScreenAccessor.java` | the panel origin that window-relative clicks need |
+| `QaSounds.java` | logs every sound this client plays, with its distance, so nobody has to listen |
 | `QaLog.java` | the outbox |
 
-Register `QaDriver.register()` from `onInitializeClient()`, add `QaModifiersMixin` to the client
-mixin config, and revert both when the session ends.
+Register `QaDriver.register()` from `onInitializeClient()`, add `QaModifiersMixin` and
+`QaHandledScreenAccessor` to the client mixin config, and revert all of it when the session ends.
 
 ### The loop
 
@@ -95,8 +97,37 @@ Reading back: `world`, `inv`, `slots`, `screen`, `entities`, `threats`, `block x
 
 Session: `wait ticks`, `sshot <name>`, `guiscale n`, `mark <text>`, `abort`, `quit`.
 
+Multiplayer: `connect <host:port>`, `leave`, `cmd <command>`, `chat <text>`, `sounds <regex>`,
+`keyup <name>` for a key held in a screen.
+
 `mark` is how the agent finds its place in a long log: write one before each check and grep for it
 afterwards.
+
+### Playing with several players
+
+Use this when the question is what one player sees of what another does: who hears a sound, whether
+a door moves for both, whether state survives a player leaving. Every client runs this same driver.
+
+- Set up the server, run configs and per-client run directories as `scripted-qa` describes under
+  **Run Configurations** and **Server Preparation**. One client gets its own inbox and outbox in its
+  own run directory, and is told apart by `--username`.
+- Make one client op through `ops.json` and leave the other a normal player. Then only the op can
+  stage scenes, and the other client tests what a player without permissions gets.
+- Keep master volume above zero, for example `soundCategory_master:0.01` in `options.txt`. The game
+  skips a sound at zero volume, so `QaSounds` would log nothing and the run would look like silence.
+- Filter noisy lines out of the outbox in the wrapper you read it through, such as clicks and
+  progress messages. A timer that reports every percent fills the context fast.
+- A restart test needs no extra code: `cmd stop` as the op, relaunch the server, then on each client
+  click **Back to Server List**, `key escape`, and `connect`.
+
+Shell rules for a run like this:
+
+- Launch with `nohup ... < /dev/null &` and never use a bare `wait` in that shell. It waits for the
+  game too and hangs the command until the game exits. A hung shell also keeps its queued writes, so
+  when it wakes it can write stale commands into the next run's inbox.
+- macOS has no `timeout` command. Use the timeout argument of `scripted-qa`'s `qa.sh`.
+- Before staging, check which hotbar slot holds what with `inv`. `/clear` and `/give` shift slots,
+  and a wrong slot means the test ran with an empty hand and proves nothing.
 
 ## Rules the game will teach you the hard way
 
@@ -144,6 +175,12 @@ cell, always.
 running against a corpse and each one burns its timeout. Detect `player.isDead()`, drop the queue,
 release the keys, log the position, and respawn automatically. Then go and collect the drops: they
 despawn in five minutes and a survival run cannot afford to lose its tools twice.
+
+**Aim at the block's shape, not its cell.** An open door is a thin panel at the edge of its cell, so
+aiming at the cell centre hits nothing. `QaTasks.aimPoint` aims at the centre of the outline.
+
+**Hold sneak for a few ticks before using.** Pressing sneak and use in the same tick can reach the
+server before the sneak state does.
 
 **Keep an abort.** Read the inbox even while a task is running and act on a bare `abort` line.
 Without it, a gather that wanders off across the map can only be stopped by killing the client.

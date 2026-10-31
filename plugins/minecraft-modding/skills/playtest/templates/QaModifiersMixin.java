@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(InputUtil.class)
 public class QaModifiersMixin {
   @Inject(method = "isKeyPressed", at = @At("HEAD"), cancellable = true)
-  private static void tooManyChests$qaHeldKeys(
+  private static void qa$heldKeys(
       long handle, int code, CallbackInfoReturnable<Boolean> callback) {
     if (QaModifiers.isHeld(code)) {
       callback.setReturnValue(true);
