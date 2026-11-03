@@ -59,6 +59,7 @@ General development workflow, usable in any repo.
 | `pr` | Validation, commit, push, and PR creation with strict description conventions |
 | `create-issue` | GitHub issues with project board sync, optional epics and asset labels |
 | `build` | End-to-end feature flow: issue, worktree, implement, validate, draft PR, review gate, QA handoff |
+| `code-quality-audit` | Audit a whole repo against its code standards, fix every finding with no change in behaviour, and ship it as one tested PR through `build` |
 | `pr-local-review` | Read-only review of a PR from the local clone against SOLID, DRY, KISS, correctness, docs, and dead code, producing a paste-ready punch list |
 | `prd` | Turn a concept, a set of requirements, or an issue backlog into a product requirements document for any software product, refined with the user and shipped into the repo |
 | `strip-comments` | Remove every comment from a codebase with a literal-aware lexer and a mechanical proof that only comments were removed |

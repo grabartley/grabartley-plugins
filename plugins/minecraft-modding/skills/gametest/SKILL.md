@@ -145,7 +145,7 @@ pet.setTamed(true, true);
 pet.setAiDisabled(true);   // <-- no goals run; DataTracker mutation still works
 ```
 
-If the test IS about AI behavior (e.g. "auto-sleep at night"), keep AI on but pin the entity near its target before the relevant assertion so navigation has a chance to fire:
+If the test needs AI to run at all, read Rule 11 first: an assertion must never wait on what the AI decides. Keep AI on only to let a goal fire on an entity you have already pinned beside its target, so the outcome no longer depends on navigation:
 
 ```java
 context.runAtTick(130, () -> {
@@ -245,6 +245,23 @@ The JUnit unit-test classpath does NOT have Loom's production-runtime access wid
 - Entity construction (`ModEntities.PET.create(world)` triggers `MobEntity` class init, which hits the same verifier path)
 - NBT round-trips via a real entity (same construction barrier)
 - Goal selector behavior, navigation, multi-tick state, anything that needs a real `ServerWorld`
+
+## Rule 11: Never let NPC AI decide an assertion
+
+A test that waits for a villager, mob, or pet to choose to do something is flaky. Goal selectors run on random timers, pathing depends on the world around the entity, and an entity in one test can react to another test's blocks. On CI it times out with "Didn't succeed or fail within N ticks" instead of failing with a message.
+
+Things that make AI-driven tests fail on CI and pass locally:
+- **Tests in a batch sit close together.** The framework places them a few blocks apart, well inside the range a villager searches for a job site or a mob for a target. A villager in one test can claim another test's workstation.
+- **Random goal timers.** Job site searches, wandering and target selection fire on random intervals, so the same test takes a different number of ticks each run.
+- **Retries hide it.** `maxAttempts` does nothing under `runGametest` (Rule 8).
+
+Assert what the AI would act on, and drive any movement yourself:
+- **Jobs and workstations:** assert the block is the profession's workstation, through `profession.acquirableWorkstation().test(PointOfInterestTypes.getTypeForState(state).orElseThrow())`, and that no other job site is in reach. Don't wait for the profession to change.
+- **Reaching a place:** ask the navigation for a path with `entity.getNavigation().findPathTo(pos, range)` and check where it ends. It returns null until the mob is on the ground, so wait a few ticks after spawning. `Path.reachesTarget()` is false when the target is a solid block, so check the end node's distance instead.
+- **Moving through something:** turn AI off and step the entity yourself with `entity.move(MovementType.SELF, step)` each tick. Collision runs exactly as it does for a walking mob, with no goal selector in the way.
+- **A hit, a sighting, or a sound:** call the hook that reacts to it with the entity placed where it needs to be. Don't wait for the mob to decide to act.
+
+An entity that only has to stand inside a block, so that the block's collision fires, can keep its AI. The collision fires on the first tick, before any goal moves it.
 
 ## Annotation Reference
 
@@ -508,6 +525,8 @@ Run the same task in CI on every PR so the suite gates merges.
 | A commanded flag asserted true after the action completes | Production intentionally clears it once the action lands | Test the transition (was true, now false) |
 | Test passes sometimes, fails sometimes, no obvious cause | Cross-test contamination on world clock or static maps | Move tests into a named `batchId`; clear static state in `@BeforeBatch` |
 | A block you "removed" is still there, but only for fluids | `removeBlock` sets the pos to its own fluid state, so removing water re-places water | `setBlockState(pos, Blocks.AIR)` |
+| A test passes locally and times out on CI waiting for a villager or mob to act | The test waits on NPC AI: random goal timers, or another test's blocks in reach | Assert the condition the AI acts on and drive movement yourself (Rule 11) |
+| A test that waits for background work times out on CI only | The test server runs ticks as fast as it can, so a tick limit can run out while the work is still going | End the test when the work reports it is done, and fail at once if the result is wrong |
 | An entity is never rained on no matter how you set the weather | The framework roofs every structure with barriers unless the test opts out | `@GameTest(skyAccess = true)`, and remember weather is world state so pin it per batch |
 
 ## Skills you should use alongside this one
@@ -521,6 +540,7 @@ Run the same task in CI on every PR so the suite gates merges.
 - Don't cast `createMockPlayer(...)` to `ServerPlayerEntity`.
 - Don't rely on `useNightTime()`/`setTime(...)` as persistent pins.
 - Don't put behavioral logic in `tickLimit = 20` if the goal selector needs 50+ ticks to fire.
+- Don't wait on villager, mob or pet AI in an assertion; see Rule 11.
 - Don't use `maxAttempts` as a flake guard. `runGametest` fails on the first failed attempt; see Rule 8.
 - Don't write tests that JUnit can do; reach for `src/test/java` first.
 - Don't ship a new gametest class without adding it to `fabric.mod.json`.
