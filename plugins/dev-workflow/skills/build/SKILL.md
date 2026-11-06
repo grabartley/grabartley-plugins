@@ -34,7 +34,7 @@ Read per the `config` skill. `<slug>` is the current repo:
 13. Move the issue to `QA testing` only after the PR is marked ready for review and the `ciGreenBeforeQa` condition is met. If CI fails, keep the issue in `In progress`, fix the failures on the same branch, and re-validate before transitioning.
 14. After the PR is ready and the `QA testing` transition lands, always provide a detailed manual QA checklist to the developer. The checklist covers what automated validation could not; items already verified automatically are listed as pre-verified with a pointer to the evidence.
 15. If PR code changes after the PR is opened, check whether the PR description still matches the current branch state, and update it if needed so it reflects the final state only.
-16. Leave the issue in `QA testing` until the PR is merged. The merge is the QA sign-off: once it lands, verify the assignment, move the issue to `Done`, and delete the worktree and its local branch. Never leave either step to the developer.
+16. Leave the issue in `QA testing` until the PR is merged. The merge is the QA sign-off: once it lands, verify the assignment, move the issue to `Done`, and delete the worktree and its local branch. Never leave either step to the developer. The work is not done until the CI run on `main` for the merge commit has completed green: watch it with `gh run list --repo <slug> --branch main --commit <merge-sha>` and `gh run watch`. If it fails, fix it on a new branch. If it is still running well past its usual time, cancel it with `gh run cancel`, find out why, and fix that too, because a stuck run keeps using runner minutes.
 17. Every code change must also update any docs it invalidates. Audit `README.md`, in-repo docs, and the linked issue body before committing; ship doc edits in the same PR as the code change.
 18. If QA finds issues after handoff, re-enter the build flow for the same issue: move it back to `In progress`, continue on the existing branch and PR, and pass back through the review gate before marking it ready again. Do not open a new issue for the same scope.
 19. No pull request becomes ready for review while the branch still carries comments it introduced. The review gate strips them, and the `strip-comments` skill's verification is what proves only comments went.
@@ -57,7 +57,7 @@ Read per the `config` skill. `<slug>` is the current repo:
 12. Wait on CI per the `ciGreenBeforeQa` setting and report status.
 13. Verify the assignment, then move the issue to `QA testing` when CI is satisfied and the PR is ready for human verification.
 14. Provide a detailed manual QA checklist that the developer can run step by step.
-15. Once the PR is merged, verify the assignment, move the issue to `Done`, and delete the worktree and its local branch.
+15. Once the PR is merged, verify the assignment, move the issue to `Done`, and delete the worktree and its local branch. Then check that the CI run on `main` for the merge commit completes green, per Critical Rule 16.
 
 ## Review Gate
 
