@@ -1,6 +1,6 @@
 ---
 name: gametest
-description: Author or modify Fabric GameTest classes for a Fabric mod. Use this skill BEFORE writing or editing any file under src/main/java/.../gametest/, before changing fabric-gametest entrypoints in fabric.mod.json, or before authoring .snbt structure templates. Also use when diagnosing flaky gametests, ClassCastException on createMockPlayer, sleep-test timing failures, or "test still in EMPTY_STRUCTURE but placing blocks at (2,1,0)" smells. This skill encodes hard-won patterns from a full audit of a real suite; rules here override defaults.
+description: Author or modify Fabric GameTest classes for a Fabric mod. Use this skill BEFORE writing or editing any file under src/main/java/.../gametest/, before changing fabric-gametest entrypoints in fabric.mod.json, or before authoring .snbt structure templates. Also use when diagnosing flaky gametests, a gametest CI job that hangs or runs slow, setting up gametest CI, ClassCastException on createMockPlayer, sleep-test timing failures, or "test still in EMPTY_STRUCTURE but placing blocks at (2,1,0)" smells. This skill encodes hard-won patterns from a full audit of a real suite; rules here override defaults.
 ---
 
 # Writing Fabric GameTests
@@ -263,6 +263,23 @@ Assert what the AI would act on, and drive any movement yourself:
 
 An entity that only has to stand inside a block, so that the block's collision fires, can keep its AI. The collision fires on the first tick, before any goal moves it.
 
+## Rule 12: Never generate many chunks in one tick
+
+A test that builds or loads a lot of world far from the structure, such as whole generated structures through `world.getChunk`, must spread that work across ticks. The server only unloads chunks between ticks. When every test in a batch builds all its world in its first tick, thousands of chunks pile up half generated. The tests can still pass, but on 1.21.1 the server can then get stuck in `MinecraftServer.shutdown` on "Saving worlds", retrying chunk unloads that never finish. On CI that hangs the job until it hits its time limit.
+
+Schedule one piece of work every few ticks, and complete the test after the last one:
+
+```java
+int step = 0;
+for (final Site site : sites) {
+  context.runAtTick((long) step * 5, () -> buildCheckAndRemove(context, site));
+  step++;
+}
+context.runAtTick((long) step * 5, context::complete);
+```
+
+To prove a fix, run the batch alone with the heap capped to the CI runner's default (about 1.75 GB on a private-repo runner) and check that the log ends with "All dimensions are saved".
+
 ## Annotation Reference
 
 The full `@GameTest` annotation fields, decompiled from Yarn 1.21.1:
@@ -512,7 +529,11 @@ Reports land at `build/gametest-results.xml` (JUnit-style XML). To debug a singl
 ./gradlew runGametest --no-daemon 2>&1 | grep -E "GAME TESTS|required tests|<failure"
 ```
 
-Run the same task in CI on every PR so the suite gates merges.
+Run the same task in CI on every PR so the suite gates merges. Guard every CI job so a stuck run can never use hours of runner time:
+
+- Give every job `timeout-minutes: 20`, or more only when the job runs several long steps in a row, such as a release.
+- Give the `Run gametests` step its own `timeout-minutes`, shorter than the job's. When a step limit fires the job fails, so `if: failure()` log uploads and test report steps still run. When only the job limit fires, GitHub cancels the job and skips them.
+- Add `vmArg "-XX:+ExitOnOutOfMemoryError"` to the `gametest` run config in `build.gradle`. Without it a server that runs out of memory keeps running in a broken state instead of exiting.
 
 ## Common Failures and Their Causes
 
@@ -528,6 +549,7 @@ Run the same task in CI on every PR so the suite gates merges.
 | A test passes locally and times out on CI waiting for a villager or mob to act | The test waits on NPC AI: random goal timers, or another test's blocks in reach | Assert the condition the AI acts on and drive movement yourself (Rule 11) |
 | A test that waits for background work times out on CI only | The test server runs ticks as fast as it can, so a tick limit can run out while the work is still going | End the test when the work reports it is done, and fail at once if the result is wrong |
 | An entity is never rained on no matter how you set the weather | The framework roofs every structure with barriers unless the test opts out | `@GameTest(skyAccess = true)`, and remember weather is world state so pin it per batch |
+| Every test passes, then the job hangs on "Saving worlds" until its time limit | The tests generated thousands of chunks in a single tick, and shutdown can't unload them | Spread the work across ticks (Rule 12) |
 
 ## Skills you should use alongside this one
 
@@ -543,4 +565,5 @@ Run the same task in CI on every PR so the suite gates merges.
 - Don't wait on villager, mob or pet AI in an assertion; see Rule 11.
 - Don't use `maxAttempts` as a flake guard. `runGametest` fails on the first failed attempt; see Rule 8.
 - Don't write tests that JUnit can do; reach for `src/test/java` first.
+- Don't generate many chunks in one tick; see Rule 12.
 - Don't ship a new gametest class without adding it to `fabric.mod.json`.
