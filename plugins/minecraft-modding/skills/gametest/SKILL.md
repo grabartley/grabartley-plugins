@@ -1,6 +1,6 @@
 ---
 name: gametest
-description: Author or modify Fabric GameTest classes for a Fabric mod. Use this skill BEFORE writing or editing any file under src/main/java/.../gametest/, before changing fabric-gametest entrypoints in fabric.mod.json, or before authoring .snbt structure templates. Also use when diagnosing flaky gametests, a gametest CI job that hangs or runs slow, setting up gametest CI, ClassCastException on createMockPlayer, sleep-test timing failures, or "test still in EMPTY_STRUCTURE but placing blocks at (2,1,0)" smells. This skill encodes hard-won patterns from a full audit of a real suite; rules here override defaults.
+description: Author or modify Fabric GameTest classes for a Fabric mod. Use this skill BEFORE writing or editing any file under src/main/java/.../gametest/, before changing fabric-gametest entrypoints in fabric.mod.json, or before authoring .snbt structure templates. Also use when deciding whether a test should be a gametest or a unit test, when diagnosing flaky gametests, a gametest CI job that hangs or runs slow, setting up gametest CI, ClassCastException on createMockPlayer, sleep-test timing failures, or "test still in EMPTY_STRUCTURE but placing blocks at (2,1,0)" smells. This skill encodes hard-won patterns from a full audit of a real suite; rules here override defaults.
 ---
 
 # Writing Fabric GameTests
@@ -221,9 +221,13 @@ If this fails at "should still be sleeping at tick 50" you don't know whether th
 
 Smaller tests are easier to keep deterministic.
 
-## Rule 10: If JUnit can do it, use JUnit
+## Rule 10: Gametests sit at the top of the testing pyramid. If JUnit can do it, use JUnit
 
-Gametest spins up an integrated server and a real `ServerWorld` per batch. That's expensive. Anything that can be tested without ticking the world should be a JUnit test:
+Gametest spins up an integrated server and a real `ServerWorld` per batch. That's expensive. Like end-to-end tests in any other stack, gametests sit at the top of the testing pyramid, so a suite should have far fewer of them than unit tests.
+
+Write a gametest for a core happy path that can only be proven in a running world. Add one for an edge case or a complex interaction only when that case matters and nothing lower down can cover it. Most edge cases, variants, and error paths belong in unit tests. If a feature's gametests start to outnumber its unit tests, move the logic out of the world-touching code until the extra cases can be unit tested.
+
+Anything that can be tested without ticking the world should be a JUnit test:
 
 - Constant comparisons (`COOLDOWN_TICKS == 6 * 20`)
 - `instanceof` checks against base classes the compiler already enforces
@@ -565,5 +569,6 @@ Run the same task in CI on every PR so the suite gates merges. Guard every CI jo
 - Don't wait on villager, mob or pet AI in an assertion; see Rule 11.
 - Don't use `maxAttempts` as a flake guard. `runGametest` fails on the first failed attempt; see Rule 8.
 - Don't write tests that JUnit can do; reach for `src/test/java` first.
+- Don't write a gametest for every edge case. Gametests cover core happy paths and only the edge cases a unit test can't reach; see Rule 10.
 - Don't generate many chunks in one tick; see Rule 12.
 - Don't ship a new gametest class without adding it to `fabric.mod.json`.
