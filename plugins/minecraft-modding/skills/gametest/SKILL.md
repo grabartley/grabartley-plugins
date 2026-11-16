@@ -1,6 +1,6 @@
 ---
 name: gametest
-description: Author or modify Fabric GameTest classes for a Fabric mod. Use this skill BEFORE writing or editing any file under src/main/java/.../gametest/, before changing fabric-gametest entrypoints in fabric.mod.json, or before authoring .snbt structure templates. Also use when deciding which gametests a feature needs, when diagnosing flaky gametests, a gametest CI job that hangs or runs slow, setting up gametest CI, ClassCastException on createMockPlayer, sleep-test timing failures, or "test still in EMPTY_STRUCTURE but placing blocks at (2,1,0)" smells. This skill encodes hard-won patterns from a full audit of a real suite; rules here override defaults.
+description: Author or modify Fabric GameTest classes for a Fabric mod. Use this skill BEFORE writing or editing any file under src/main/java/.../gametest/, before changing fabric-gametest entrypoints in fabric.mod.json, or before authoring .snbt structure templates. Also use when deciding which gametests a feature needs, when diagnosing flaky gametests or a test that depends on mob AI, a gametest CI job that hangs or runs slow, setting up gametest CI, ClassCastException on createMockPlayer, sleep-test timing failures, or "test still in EMPTY_STRUCTURE but placing blocks at (2,1,0)" smells. This skill encodes hard-won patterns from a full audit of a real suite; rules here override defaults.
 ---
 
 # Writing Fabric GameTests
@@ -56,9 +56,9 @@ src/main/resources/data/<modid>/gametest/structure/<name>.snbt
 
 Build templates with a bedrock floor and enough room for the behavior under test. A useful pair, proven in practice:
 - a small template (about 5x3x5) for placed-block interactions
-- an arena template (about 7x4x7) for AI-driven multi-tick tests
+- an arena template (about 7x4x7) for multi-tick tests
 
-Reference them via `@GameTest(templateName = "<modid>:<name>", ...)` and list the shipped ids in the repo's `gametestTemplates` config. Anytime a test relies on AI ticking for >20 ticks, use the arena, not `EMPTY_STRUCTURE`. The number of mysteriously-failing tests this prevents is hard to overstate.
+Reference them via `@GameTest(templateName = "<modid>:<name>", ...)` and list the shipped ids in the repo's `gametestTemplates` config. Anytime entities have to tick for more than 20 ticks, use the arena, not `EMPTY_STRUCTURE`. The number of mysteriously-failing tests this prevents is hard to overstate.
 
 A note on template coordinates: relative y1 is the template floor, entities stand at y2; placing an entity at y1 embeds it in the floor.
 
@@ -133,38 +133,31 @@ public void clearSessionState(ServerWorld world) {
 
 If clear-helpers don't exist yet, add them (preferred), use `setAccessible(true)` reflection on the static field, or scope the test so the state never gets set.
 
-## Rule 6: When the test is about flag transitions, disable the AI
+## Rule 6: Every mob a test spawns has its AI off
 
-Many entity tests are testing DataTracker contracts: "set X, observe X via getter; call mutator, observe mutated value." The entity's AI ticks in parallel and can mutate the same flags: anger goals set targets, revenge goals react to damage, an auto-sleep goal re-sleeps an entity right after `damage()` woke it. All of this races your assertion.
+This is a hard rule with no exceptions. No test may depend on mob AI: never wait for a goal to start, a target to be picked, a path to be walked, or a mob to wander, sleep, flee or attack on its own. Goal selectors run on random timers and react to whatever is nearby, including other tests' blocks and entities, so a test that depends on AI passes locally and fails on CI.
 
-If the test isn't about AI behavior, kill the AI:
+Turn AI off on every mob as soon as you spawn it, including mobs that are only there as a target or scenery:
 
 ```java
 final PetEntity pet = context.spawnEntity(ModEntities.PET, new BlockPos(0, 1, 0));
-pet.setTamed(true, true);
-pet.setAiDisabled(true);   // <-- no goals run; DataTracker mutation still works
+pet.setAiDisabled(true);
 ```
 
-If the test needs AI to run at all, read Rule 11 first: an assertion must never wait on what the AI decides. Keep AI on only to let a goal fire on an entity you have already pinned beside its target, so the outcome no longer depends on navigation:
+On 1.21.1, `setAiDisabled(true)` makes `MobEntity.canMoveVoluntarily()` false, which skips `tickNewAi`: the goal and target selectors, navigation, and move, look and jump control. Gravity, `travel`, `move` and block collision still run, so the mob still falls, lands and touches blocks. DataTracker writes, `damage()`, `interactMob` and NBT all still work.
 
-```java
-context.runAtTick(130, () -> {
-  pet.refreshPositionAndAngles(
-      absBedPos.getX() + 0.5, absBedPos.getY(), absBedPos.getZ() + 0.5, 0f, 0f);
-  pet.setVelocity(0, 0, 0);
-});
-```
+If the code under test spawns mobs of its own, turn their AI off too, for example by finding them with `context.getWorld().getEntitiesByClass(...)` over `context.getTestBox()` right after the call.
 
-### And a tamed entity NEEDS AN OWNER
+To test what a goal does, run it yourself on a mob whose AI is off. Build the goal, or take it from the mob, and call `canStart()`, `start()` and `tick()` in the order the selector would, asserting after each call. To test how a mob reacts to something, call the hook that reacts (Rule 11). Anything a goal decides from plain inputs belongs in a unit test on a pure helper (Rule 10).
 
-Vanilla `SitGoal.canStart` on `TameableEntity` returns true UNCONDITIONALLY for any tamed entity whose `getOwner()` returns null (after the early `!isTamed`, in-water, not-on-ground filters). `SitGoal` is typically registered at a higher priority (lower number) than custom sleep or behavior goals, and `PrioritizedGoal.canBeReplacedBy` returns `canStop() && other.priority < this.priority`, so SitGoal cannot be preempted by a lower-priority goal. The entity "sits" forever and `isInSittingPose()` short-circuits the custom goals' `canStart`. In production every tamed entity has an owner so this never fires; in gametests wire one up explicitly:
+### A tamed entity still needs an owner
+
+Code that reads `getOwner()` sees null on a tamed mob with no owner. Wire one up when the code under test needs it:
 
 ```java
 final ServerPlayerEntity owner = context.createMockCreativeServerPlayerInWorld();
 pet.setOwnerUuid(owner.getUuid());
 ```
-
-Note: `setSitting(false)` only resets the transient `sitting` field on the Java object, it does NOT clear the DataTracker `InSittingPose` flag. Only `SitGoal.stop()` (or a direct `setInSittingPose(false)` call) does that. Fixing this with `setSitting(false)` alone is a trap; give the entity an owner so SitGoal never starts in the first place.
 
 ## Rule 7: Prefer declarative end-of-test assertions over `runAtTick(tickLimit - 1, ...)`
 
@@ -192,7 +185,7 @@ Use these when you're verifying steady-state. Use `runAtTick` + imperative `asse
 - When a test fails, `StructureTestListener.onFailed` calls `TestRunContext.retry`, which adds a copy of the state to the context's own list. The `TestSet` listener's `onRetry` does nothing, so the copy never joins the `TestSet`.
 - `TestSet.isDone()` compares completed tests against the original count, and `getFailedRequiredTestCount()` counts the failed first attempt. `TestServer.tick` stops the server once the original set is done and reports failure if any required test failed.
 
-So do not use `maxAttempts` or `requiredSuccesses`. When a test races goal selectors, navigation, or tick ordering, make it deterministic instead: pin the entity (Rule 6), freeze the world clock (Rule 3), give it its own batch, or assert a window ("within N ticks") with `runAtEveryTick` rather than one exact tick. If a test is still flaky, fix it or track it in an issue rather than masking it.
+So do not use `maxAttempts` or `requiredSuccesses`. When a test races goal selectors, navigation, or tick ordering, make it deterministic instead: turn mob AI off (Rule 6), freeze the world clock (Rule 3), give it its own batch, or assert a window ("within N ticks") with `runAtEveryTick` rather than one exact tick. If a test is still flaky, fix it or track it in an issue rather than masking it.
 
 ## Rule 9: One assertion theme per test, named after what fails
 
@@ -248,13 +241,13 @@ The JUnit unit-test classpath does NOT have Loom's production-runtime access wid
 - `BlockTags.*` membership (`state.isIn(BlockTags.AXE_MINEABLE)` needs server-side tag bindings)
 - Entity construction (`ModEntities.PET.create(world)` triggers `MobEntity` class init, which hits the same verifier path)
 - NBT round-trips via a real entity (same construction barrier)
-- Goal selector behavior, navigation, multi-tick state, anything that needs a real `ServerWorld`
+- Goals run by hand on a mob whose AI is off (Rule 6), navigation paths, multi-tick state, anything that needs a real `ServerWorld`
 
-## Rule 11: Never let NPC AI decide an assertion
+## Rule 11: Assert what the AI would act on
 
-A test that waits for a villager, mob, or pet to choose to do something is flaky. Goal selectors run on random timers, pathing depends on the world around the entity, and an entity in one test can react to another test's blocks. On CI it times out with "Didn't succeed or fail within N ticks" instead of failing with a message.
+Rule 6 bans tests that depend on mob AI. This rule is how to test an AI-driven feature without it. A test that waits for a villager, mob, or pet to choose to do something is flaky: on CI it times out with "Didn't succeed or fail within N ticks" instead of failing with a message.
 
-Things that make AI-driven tests fail on CI and pass locally:
+Why AI-driven tests fail on CI and pass locally:
 - **Tests in a batch sit close together.** The framework places them a few blocks apart, well inside the range a villager searches for a job site or a mob for a target. A villager in one test can claim another test's workstation.
 - **Random goal timers.** Job site searches, wandering and target selection fire on random intervals, so the same test takes a different number of ticks each run.
 - **Retries hide it.** `maxAttempts` does nothing under `runGametest` (Rule 8).
@@ -262,10 +255,10 @@ Things that make AI-driven tests fail on CI and pass locally:
 Assert what the AI would act on, and drive any movement yourself:
 - **Jobs and workstations:** assert the block is the profession's workstation, through `profession.acquirableWorkstation().test(PointOfInterestTypes.getTypeForState(state).orElseThrow())`, and that no other job site is in reach. Don't wait for the profession to change.
 - **Reaching a place:** ask the navigation for a path with `entity.getNavigation().findPathTo(pos, range)` and check where it ends. It returns null until the mob is on the ground, so wait a few ticks after spawning. `Path.reachesTarget()` is false when the target is a solid block, so check the end node's distance instead.
-- **Moving through something:** turn AI off and step the entity yourself with `entity.move(MovementType.SELF, step)` each tick. Collision runs exactly as it does for a walking mob, with no goal selector in the way.
+- **Moving through something:** step the entity yourself with `entity.move(MovementType.SELF, step)` each tick. Collision runs exactly as it does for a walking mob, with no goal selector in the way.
 - **A hit, a sighting, or a sound:** call the hook that reacts to it with the entity placed where it needs to be. Don't wait for the mob to decide to act.
 
-An entity that only has to stand inside a block, so that the block's collision fires, can keep its AI. The collision fires on the first tick, before any goal moves it.
+An entity that only has to stand inside a block, so that the block's collision fires, needs nothing more: block collision still runs with AI off.
 
 ## Rule 12: Never generate many chunks in one tick
 
@@ -408,7 +401,7 @@ public void collarColorPersistsAcrossWakeUpCycle(TestContext context) {
 }
 ```
 
-### Pattern: multi-tick AI test on a real arena
+### Pattern: multi-tick test on a real arena
 
 ```java
 @GameTest(
@@ -421,6 +414,7 @@ public void commandedSleepPetStaysInPositionAcrossMultipleTicks(TestContext cont
   context.setBlockState(relBedPos, ModBlocks.PET_BED.getDefaultState());
 
   final PetEntity pet = context.spawnEntity(ModEntities.PET, relBedPos);
+  pet.setAiDisabled(true);
   pet.setTamed(true, true);
 
   context.runAtTick(10, () -> {
@@ -545,12 +539,12 @@ Run the same task in CI on every PR so the suite gates merges. Guard every CI jo
 |---|---|---|
 | `TestContext$1 cannot be cast to class ...ServerPlayerEntity` | Used `(ServerPlayerEntity) createMockPlayer(...)` | Use `createMockCreativeServerPlayerInWorld()` |
 | "still sleeping" / "auto-sleep" assertion fails sometimes | World clock drifted across the assertion window | Freeze `DO_DAYLIGHT_CYCLE` in `@BeforeBatch` |
-| Entity not at expected position after >20 ticks | Entity wandered (AI on) or fell into the void (EMPTY_STRUCTURE has no floor) | Use an arena template; disable AI for pure-state tests |
-| Sleep flag asserted true after `damage()` call but it's false | An auto-sleep goal re-slept the entity the very next tick | Assert in the same tick as the mutation, not 10 ticks later |
+| Entity not at expected position after >20 ticks | Entity wandered (AI on) or fell into the void (EMPTY_STRUCTURE has no floor) | Turn its AI off (Rule 6) and use an arena template |
+| Sleep flag asserted true after `damage()` call but it's false | An auto-sleep goal re-slept the entity the very next tick | Turn its AI off (Rule 6) |
 | A commanded flag asserted true after the action completes | Production intentionally clears it once the action lands | Test the transition (was true, now false) |
 | Test passes sometimes, fails sometimes, no obvious cause | Cross-test contamination on world clock or static maps | Move tests into a named `batchId`; clear static state in `@BeforeBatch` |
 | A block you "removed" is still there, but only for fluids | `removeBlock` sets the pos to its own fluid state, so removing water re-places water | `setBlockState(pos, Blocks.AIR)` |
-| A test passes locally and times out on CI waiting for a villager or mob to act | The test waits on NPC AI: random goal timers, or another test's blocks in reach | Assert the condition the AI acts on and drive movement yourself (Rule 11) |
+| A test passes locally and times out on CI waiting for a villager or mob to act | The test waits on NPC AI: random goal timers, or another test's blocks in reach | Turn AI off, assert the condition the AI acts on and drive movement yourself (Rules 6 and 11) |
 | A test that waits for background work times out on CI only | The test server runs ticks as fast as it can, so a tick limit can run out while the work is still going | End the test when the work reports it is done, and fail at once if the result is wrong |
 | An entity is never rained on no matter how you set the weather | The framework roofs every structure with barriers unless the test opts out | `@GameTest(skyAccess = true)`, and remember weather is world state so pin it per batch |
 | Every test passes, then the job hangs on "Saving worlds" until its time limit | The tests generated thousands of chunks in a single tick, and shutdown can't unload them | Spread the work across ticks (Rule 12) |
@@ -565,8 +559,7 @@ Run the same task in CI on every PR so the suite gates merges. Guard every CI jo
 - Don't use `world.spawnEntity`/`world.setBlockState` inside a gametest class.
 - Don't cast `createMockPlayer(...)` to `ServerPlayerEntity`.
 - Don't rely on `useNightTime()`/`setTime(...)` as persistent pins.
-- Don't put behavioral logic in `tickLimit = 20` if the goal selector needs 50+ ticks to fire.
-- Don't wait on villager, mob or pet AI in an assertion; see Rule 11.
+- Don't let any test depend on mob AI. Every mob a test spawns gets `setAiDisabled(true)`; see Rule 6.
 - Don't use `maxAttempts` as a flake guard. `runGametest` fails on the first failed attempt; see Rule 8.
 - Don't skip unit tests. Every piece of logic gets parameterised JUnit tests under `src/test/java`; see Rule 10.
 - Don't write gametests beyond a feature's core happy paths and the occasional edge case or complex interaction that needs one; see Rule 10.
