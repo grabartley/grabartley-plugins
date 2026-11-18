@@ -327,7 +327,7 @@ their settings carry into the run, then force the QA-critical keys on top:
 # python3 seed.py run/options.txt run/qa-alice/options.txt run/qa-bob/options.txt
 import os, shutil, sys
 source, targets = sys.argv[1], sys.argv[2:]
-forced = {"pauseOnLostFocus": "false", "guiScale": "2", "skipMultiplayerWarning": "true",
+forced = {"pauseOnLostFocus": "false", "guiScale": "4", "skipMultiplayerWarning": "true",
           "onboardAccessibility": "false", "tutorialStep": "none"}
 for target in targets:
     os.makedirs(os.path.dirname(target), exist_ok=True)
