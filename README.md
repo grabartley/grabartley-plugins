@@ -84,6 +84,7 @@ Fabric mod development on Minecraft 1.21.1 era tooling. Layers on top of dev-wor
 | `run-game-client` | Launch the dev client for manual testing |
 | `run-tests` | Unit tests, game tests, and the pre-push workflow |
 | `mp3-to-ogg` | Convert audio assets for resource packs |
+| `readme` | Write a mod README for players, then turn the merged README into paste-ready Modrinth and CurseForge descriptions |
 
 ### runelite-dev
 
